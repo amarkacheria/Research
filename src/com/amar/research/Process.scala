@@ -9,12 +9,12 @@ import scala.collection._
 object Process extends App with Context {
   
   // Configuration
-  val minSupport = 3
-  val minSupportCol = 3;
-	val numPartitions = 1
+  val minSupport = 10
+  val minSupportCol = 10;
+	val numPartitions = 10
 
   // Read Data
-	val origData = sparkSession.sparkContext.textFile("src/resources/lalit-test.txt");
+	val origData = sparkSession.sparkContext.textFile("src/resources/training-trunc.txt").cache();
 
 	origData.take(5).map(println);
 	//-----------------------------------------------------------------------------------
@@ -24,7 +24,7 @@ object Process extends App with Context {
 	// 0,15,15,15,0,5 -> 0$0 0$4 15$1 15$2 15$3%3
 	val prepData = origData.zipWithIndex.map{ case (line, idx) => 
 	  line.split(',')
-//	  .dropRight(1)
+	  .dropRight(1)
 	  .zipWithIndex
 	  .sortBy{ case(value, index) => value.toDouble}
 	  .map{ case(value, index) => value + "$" + index }
@@ -32,7 +32,7 @@ object Process extends App with Context {
 	  .concat("%" + idx)
 	}
 	
-//   prepData.collect().map(println);
+   prepData.take(5).map(println);
 	//-----------------------------------------------------------------------------------
 	// BicPhaseOne
 	// Two-hop projection
@@ -40,23 +40,23 @@ object Process extends App with Context {
 	// Input: 0$0 0$4 15$1 15$2 15$3%3
 	// Output: 15.0:15.33	   0.0$1#15.0,2#15.0,3#15.0$3 <-- the Bic_Str
    
-	val trange1 = getTRange(0.00, 1, 0.1, 0.025)
-	val trange2 = getTRange(1,10,1, 0.25)
-	val trange3 = getTRange(10,50,5,1)
-	val trange4 = getTRange(50, 700, 25, 5)
-	val trange = List.concat(trange1, trange2, trange3, trange4)
-	
+//	val trange1 = getTRange(0.00, 1, 0.1, 0.025)
+//	val trange2 = getTRange(1,10,1, 0.25)
+//	val trange3 = getTRange(10,50,5,1)
+//	val trange4 = getTRange(50, 700, 25, 5)
+//	val trange = List.concat(trange1, trange2, trange3, trange4)
+//	
 	// testInput binary 
   // val trangeTest = List((-0.9, 0.1), (0.9,1.1))
 	// Digits dataset
-//	val trangeDigits = getTRange(0, 16, 0.33, 0.05)
+	val trangeDigits = getTRange(0, 16, 0.33, 0.05)
 	
 	// Print trange
-	val trangeList = trange.map(x => x._1 + ":" + x._2)
+	val trangeList = trangeDigits.map(x => x._1 + ":" + x._2)
 	println(trangeList.mkString(","));	
 	
 	val biclusteredData = prepData.flatMap( line => 
-	    processLine(line, trange)
+	    processLine(line, trangeDigits)
   )
   
 //  biclusteredData.collect().map(println);
@@ -82,7 +82,7 @@ object Process extends App with Context {
 //	afterCharm.collect().map(println);
 //	afterCharm.coalesce(1).saveAsTextFile("src/resources/output/charm");
 	
-	val groupAfterCharm = afterCharm.flatMap(x => x).distinct().groupByKey();
+	val groupAfterCharm = afterCharm.flatMap(x => x).groupByKey();
 	
 //	groupAfterCharm.collect().map(println);
 //	groupAfterCharm.coalesce(1).saveAsTextFile("src/resources/output/groupCharm");
@@ -135,6 +135,8 @@ object Process extends App with Context {
 	afterCharm.saveAsTextFile("src/resources/output/charm");
 	groupAfterCharm.saveAsTextFile("src/resources/output/groupCharm");
 	
+	println("THREAD IS SLEEPING NOW FOR 24 HOURS")
+	Thread.sleep(86400000)
 
 	
 	

@@ -22,6 +22,7 @@ trait Context {
     .config(sparkConf)
     .getOrCreate()
     
+  import sparkSession.implicits._
   val rootLogger = Logger.getRootLogger()
   rootLogger.setLevel(Level.ERROR)
 }

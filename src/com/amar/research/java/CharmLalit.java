@@ -1,4 +1,4 @@
-package com.amar.research;
+package com.amar.research.java;
 
 /********************************************************************************************
 Author : Lalit Singh
@@ -332,7 +332,7 @@ public class CharmLalit {
 
         job.setOutputKeyClass(Text.class);
         job.setOutputValueClass(Text.class);
-        job.setJarByClass(Charm.class);
+//        job.setJarByClass(Charm.class);
 
         job.setMapperClass(CharmImplement.class);
 		job.setCombinerClass(Reduce.class);

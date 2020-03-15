@@ -216,6 +216,7 @@ object Process extends App with Context {
      tup
   });
 	
+	// save finalConcepts to file
 	finalConcepts.coalesce(1).saveAsTextFile("src/resources/output/final");
 	
 	println("---------------------------------------------------------------------------------------------------------------------------");

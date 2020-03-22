@@ -21,9 +21,13 @@ object Process extends App with Context {
   val minSupport = 3 // For Charm
   val minSupportCol = 3; // For filtering concepts
 	val numPartitions = 1
+//	val inputFileLocation = "src/resources/test-data/test-dataset-labels-merged.csv";
+	val inputFileLocation = "src/resources/glass-data/glass-data-normalized.csv";
+	val outputFileLocation = inputFileLocation.substring(0, inputFileLocation.length()-4) + "-output";
+	val isRowIdPresent = true;
 
   // Read Data
-	val origData = sparkSession.sparkContext.textFile("src/resources/test-dataset.csv");
+	val origData = sparkSession.sparkContext.textFile(inputFileLocation);
 	origData.take(5).map(println);
 	
 	//-----------------------------------------------------------------------------------
@@ -33,6 +37,7 @@ object Process extends App with Context {
 	// 0,15,15,15,0,5 -> 0$0 0$4 15$1 15$2 15$3%3
 	val prepData = origData.zipWithIndex.map{ case (line, idx) => 
 	  line.split(',')
+	  .drop(1) // row id
 	  .dropRight(1) // label col
 	  .zipWithIndex
 	  .sortBy{ case(value, index) => value.toDouble}
@@ -43,12 +48,17 @@ object Process extends App with Context {
    prepData.take(5).map(println);
    
 
-  // T-Range Generation for mean-ranges
-	val trange1 = getTRange(0.00, 1, 0.1, 0.025)
-	val trange2 = getTRange(1,10,1, 0.25)
-	val trange3 = getTRange(10,50,5,1)
-	val trange4 = getTRange(50, 700, 25, 5)
-	val trange = List.concat(trange1, trange2, trange3, trange4)
+  // T-Range Generation for mean-ranges for test-dataset
+//	val trange1 = getTRange(0.00, 1, 0.1, 0.025)
+//	val trange2 = getTRange(1,10,1, 0.25)
+//	val trange3 = getTRange(10,50,5,1)
+//	val trange4 = getTRange(50, 700, 25, 5)
+//	val trange = List.concat(trange1, trange2, trange3, trange4);
+	
+ // T-Range Generation for mean-ranges for glass-dataset
+//	val trange = getTRange(0.00, 80, 0.1, 0.025);
+	val trange = getTRange(-5, 5, 0.333333, 0.2);
+	
 	
 	// Print trange
 	val trangeList = trange.map(x => x._1 + ":" + x._2)
@@ -99,7 +109,7 @@ object Process extends App with Context {
 	.filter( _._2.filter(c => c.split(" ").size > minSupportCol).size > 0)
 	.sortBy(_._1.split(" ").length, false, numPartitions).sortBy(_._2.size, false, numPartitions);
 	
-	filteredConcepts.take(5).map(println);
+	filteredConcepts.take(10).map(println);
   
   // Find all rows present in the filtered concepts
 	val conceptRows: ListBuffer[Int] = new ListBuffer[Int]();
@@ -112,7 +122,11 @@ object Process extends App with Context {
 	val uniqueRows = conceptRows.distinct;
 	
 	// Select the above "uniqueRows" from the orig dataset for validation purposes
-	val validationRows = origData.zipWithIndex().filter{ case (line, idx) => 
+	val validationRows = origData.zipWithIndex().map{ case(line, idx) => 
+	   line.split(',').drop(1)
+	   (line, idx)
+	}
+	.filter{ case (line, idx) => 
 	  if (uniqueRows.contains(idx)) {
 	    true;
 	  } else {
@@ -120,16 +134,25 @@ object Process extends App with Context {
 	  }
 	}
 	
+	val allRows = origData.zipWithIndex().map{ case(line, idx) => 
+	   line.split(',').drop(1)
+	   (line, idx)
+	}
+	
 	println("VALIDATION ROWS");
 	println(" ");
 	validationRows.take(5).map((x) => println(x));
 
 	// Convert validation rows to DataFrame for easier manipulation
-	val fileToDf = validationRows.map{ case(x, y) => TestData.mapToDF(x, y)};
+	val fileToDf = validationRows.map{ case(x, y) => GlassData.mapToDF(x, y)};
+	val origFileToDf = allRows.map{ case(x, y) => GlassData.mapToDF(x, y)};
 	
-	val testSchema = TestData.getTestSchema();
+	val schema = GlassData.getGlassSchema();
+	  // TestData.getTestSchema();
 	
-	val df = sparkSession.createDataFrame(fileToDf, org.apache.spark.sql.types.StructType(testSchema));
+	val df = sparkSession.createDataFrame(fileToDf, org.apache.spark.sql.types.StructType(schema));
+	val origDf = sparkSession.createDataFrame(origFileToDf, org.apache.spark.sql.types.StructType(schema));
+	var consolidated_df = origDf.withColumn("predicted", lit(""));
 	
 	df.show(2);
 	filteredConcepts.collect().foreach(x => {
@@ -161,8 +184,8 @@ object Process extends App with Context {
       val lastRow = withId.orderBy(desc("_id")).head(1).apply(0);
   	  println(firstRow.mkString(" "));
   	  println(lastRow.mkString(" "));
-  	  println("First row label: " + firstRow.getAs[String]("label"));
-  	  println("Last row label: " + lastRow.getAs[String]("label"));
+  	  println("First row label: " + firstRow.getAs[String]("label") + " when sorting by column: " + colName);
+  	  println("Last row label: " + lastRow.getAs[String]("label") + " when sorting by column: " + colName);
   	  
 	    if (firstRow.getAs[String]("label") != lastRow.getAs[String]("label")) {
 	      println("LABELS ARE DIFFERENT!!")
@@ -173,18 +196,29 @@ object Process extends App with Context {
   	  }
 	  })
 	  
+	  println(" ");
+	  println("Final Tally: ");
 	  println( "labels same: " + labelsSame);
 	  println( "labels different: " + labelsDifferent);
+	  
 	  if (labelsSame >= labelsDifferent) {
 	    colDf = colDf.withColumn("predicted", lit(colDf.head().getAs[String]("label")));
+	    consolidated_df = consolidated_df.withColumn("predicted",
+	        when(consolidated_df.col("rowId").isin(rowNums:_*), lit(colDf.head().getAs[String]("label")))
+	        .otherwise(consolidated_df.col("predicted")));
 	  } else {
 	    colDf = colDf.withColumn("predicted", lit("?"));
+	    consolidated_df = consolidated_df.withColumn("predicted", 
+	        when(consolidated_df.col("rowId").isin(rowNums:_*), lit("?"))
+	        .otherwise(consolidated_df.col("predicted")))
 	  }
 	    	  
   	colDf.show();
     x
 	})
 
+	consolidated_df.show(25);
+	consolidated_df.coalesce(1).write.csv(outputFileLocation);
 	
 	// Pick the largest biclusters - Done
 	// Load the rows and columns data, including labels - Done

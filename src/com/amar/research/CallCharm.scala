@@ -21,7 +21,11 @@ object CallCharm {
 	    
 	    columns.map(x => {
 	      val mapping = x.split("#")
+	      // add col to itemset
 	      val item_set = new ItemSet()+=mapping(0);
+	      // find if this col already exists in TreeMap
+	      // If exists, add the row to the list of rows already found to have similar values in this col
+	      // If does not exist, create new TreeSet[Int] for this col and add to the TreeMap (imt)
 	      val trans = item_trans_map.imt.getOrElse(item_set, new mutable.TreeSet[Int]())
 	      trans.add(row);
 	      item_trans_map.imt = item_trans_map.imt+( item_set -> trans)

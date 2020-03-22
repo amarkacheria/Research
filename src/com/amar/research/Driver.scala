@@ -23,7 +23,7 @@ object Process extends App with Context {
 	val numPartitions = 1
 //	val inputFileLocation = "src/resources/test-data/test-dataset-labels-merged.csv";
 	val inputFileLocation = "src/resources/glass-data/glass-data-normalized.csv";
-	val outputFileLocation = inputFileLocation.substring(0, inputFileLocation.length()-4) + "-output";
+	val outputFileLocation = inputFileLocation.substring(0, inputFileLocation.length()-4) + "-output2";
 	val isRowIdPresent = true;
 
   // Read Data
@@ -122,10 +122,7 @@ object Process extends App with Context {
 	val uniqueRows = conceptRows.distinct;
 	
 	// Select the above "uniqueRows" from the orig dataset for validation purposes
-	val validationRows = origData.zipWithIndex().map{ case(line, idx) => 
-	   line.split(',').drop(1)
-	   (line, idx)
-	}
+	val validationRows = origData.zipWithIndex()
 	.filter{ case (line, idx) => 
 	  if (uniqueRows.contains(idx)) {
 	    true;
@@ -134,10 +131,7 @@ object Process extends App with Context {
 	  }
 	}
 	
-	val allRows = origData.zipWithIndex().map{ case(line, idx) => 
-	   line.split(',').drop(1)
-	   (line, idx)
-	}
+	val allRows = origData.zipWithIndex();
 	
 	println("VALIDATION ROWS");
 	println(" ");
@@ -148,7 +142,6 @@ object Process extends App with Context {
 	val origFileToDf = allRows.map{ case(x, y) => GlassData.mapToDF(x, y)};
 	
 	val schema = GlassData.getGlassSchema();
-	  // TestData.getTestSchema();
 	
 	val df = sparkSession.createDataFrame(fileToDf, org.apache.spark.sql.types.StructType(schema));
 	val origDf = sparkSession.createDataFrame(origFileToDf, org.apache.spark.sql.types.StructType(schema));

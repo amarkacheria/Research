@@ -21,8 +21,8 @@ object Process extends App with Context {
   val minSupport = 3 // For Charm
   val minSupportCol = 3; // For filtering concepts
 	val numPartitions = 1
-//	val inputFileLocation = "src/resources/test-data/test-dataset-labels-merged.csv";
-	val inputFileLocation = "src/resources/glass-data/glass-data-normalized.csv";
+	val inputFileLocation = "src/resources/test-data/test-dataset-label.csv";
+//	val inputFileLocation = "src/resources/glass-data/glass-data-normalized.csv";
 	val outputFileLocation = inputFileLocation.substring(0, inputFileLocation.length()-4) + "-output";
 	val isRowIdPresent = true;
 
@@ -37,7 +37,6 @@ object Process extends App with Context {
 	// 0,15,15,15,0,5 -> 0$0 0$4 15$1 15$2 15$3%3
 	val prepData = origData.zipWithIndex.map{ case (line, idx) => 
 	  line.split(',')
-	  .drop(1) // row id
 	  .dropRight(1) // label col
 	  .zipWithIndex
 	  .sortBy{ case(value, index) => value.toDouble}
@@ -49,15 +48,15 @@ object Process extends App with Context {
    
 
   // T-Range Generation for mean-ranges for test-dataset
-//	val trange1 = getTRange(0.00, 1, 0.1, 0.025)
-//	val trange2 = getTRange(1,10,1, 0.25)
-//	val trange3 = getTRange(10,50,5,1)
-//	val trange4 = getTRange(50, 700, 25, 5)
-//	val trange = List.concat(trange1, trange2, trange3, trange4);
+	val trange1 = getTRange(0.00, 1, 0.1, 0.025)
+	val trange2 = getTRange(1,10,1, 0.25)
+	val trange3 = getTRange(10,50,5,1)
+	val trange4 = getTRange(50, 700, 25, 5)
+	val trange = List.concat(trange1, trange2, trange3, trange4);
 	
  // T-Range Generation for mean-ranges for glass-dataset
 //	val trange = getTRange(0.00, 80, 0.1, 0.025);
-	val trange = getTRange(-5, 5, 0.333333, 0.2);
+//	val trange = getTRange(-5, 5, 0.333333, 0.2);
 	
 	
 	// Print trange
@@ -122,10 +121,7 @@ object Process extends App with Context {
 	val uniqueRows = conceptRows.distinct;
 	
 	// Select the above "uniqueRows" from the orig dataset for validation purposes
-	val validationRows = origData.zipWithIndex().map{ case(line, idx) => 
-	   line.split(',').drop(1)
-	   (line, idx)
-	}
+	val validationRows = origData.zipWithIndex()
 	.filter{ case (line, idx) => 
 	  if (uniqueRows.contains(idx)) {
 	    true;
@@ -134,21 +130,18 @@ object Process extends App with Context {
 	  }
 	}
 	
-	val allRows = origData.zipWithIndex().map{ case(line, idx) => 
-	   line.split(',').drop(1)
-	   (line, idx)
-	}
+	val allRows = origData.zipWithIndex()
 	
 	println("VALIDATION ROWS");
 	println(" ");
 	validationRows.take(5).map((x) => println(x));
 
 	// Convert validation rows to DataFrame for easier manipulation
-	val fileToDf = validationRows.map{ case(x, y) => GlassData.mapToDF(x, y)};
-	val origFileToDf = allRows.map{ case(x, y) => GlassData.mapToDF(x, y)};
+	val fileToDf = validationRows.map{ case(x, y) => TestData.mapToDF(x, y)};
+	val origFileToDf = allRows.map{ case(x, y) => TestData.mapToDF(x, y)};
 	
-	val schema = GlassData.getGlassSchema();
-	  // TestData.getTestSchema();
+	val schema = TestData.getTestSchema();
+	// GlassData.getGlassSchema();
 	
 	val df = sparkSession.createDataFrame(fileToDf, org.apache.spark.sql.types.StructType(schema));
 	val origDf = sparkSession.createDataFrame(origFileToDf, org.apache.spark.sql.types.StructType(schema));

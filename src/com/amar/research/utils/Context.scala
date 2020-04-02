@@ -12,8 +12,9 @@ trait Context {
   lazy val sparkConf = new SparkConf()
     .setAppName("Amar Research")
     .setMaster("local[*]")
-//    .set("spark.executor.memory", "1g")
-//    .set("spark.driver.memory", "4g")
+    .set("spark.executor.memory", "1g")
+    .set("spark.driver.memory", "4g")
+    .set("spark.sql.codegen.wholeStage", "false")
     .set("spark.serializer", "org.apache.spark.serializer.KryoSerializer")
 
     sparkConf.registerKryoClasses(Array(classOf[ItemSet], classOf[ItemsMapTrans]))

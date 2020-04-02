@@ -19,11 +19,11 @@ object Process extends App with Context {
   
   import Process.sparkSession.implicits._
   // Configuration
-  val minSupport = 7 // For Charm
-  val minSupportCol = 3; // For filtering concepts
+  val minSupport = 9 // For Charm
+  val minSupportCol = 2; // For filtering concepts
 	val numPartitions = 1
 //	val inputFileLocation = "src/resources/test-data/test-dataset-labels-merged.csv";
-	val inputFileLocation = "src/resources/glass-data/glass-data.csv";
+	val inputFileLocation = "src/resources/glass-data/glass-data-normalized.csv";
 	val outputFileLocation = inputFileLocation.substring(0, inputFileLocation.length()-4) + "-output";
 	val isRowIdPresent = true;
 
@@ -160,9 +160,9 @@ object Process extends App with Context {
 	  // Create new DF with rows from this bicluster
 	  val rowsDf = consolidated_df.where(col("rowId").isin(rowNums:_*));
 	  // Keep only columns which are part of this bicluster in the DF, rowId, and label
-	  var colDf = rowsDf.select(colNames.head, colNames.tail:_*).drop("predicted");
+	  var colDf = rowsDf.select(colNames.head, colNames.tail:_*).drop("predicted").cache();
 	  
-	  colDf.show();
+//	  colDf.show();
 	  var labelsSame = 0;
 	  var labelsDifferent = 0;
 
@@ -174,7 +174,7 @@ object Process extends App with Context {
 	  bicCols.foreach(colName => {
 	    val colSortedDF = colDf.orderBy(asc(colName));
 	    val withId = colSortedDF.withColumn("_id", monotonically_increasing_id()).orderBy("_id");
-	    withId.show();
+//	    withId.show();
   	  val firstRow = withId.head(1).apply(0);
       val lastRow = withId.orderBy(desc("_id")).head(1).apply(0);
   	  println(firstRow.mkString(" "));
@@ -197,7 +197,7 @@ object Process extends App with Context {
 	  println( "labels different: " + labelsDifferent);
 	  
 	  if (labelsSame >= labelsDifferent) {
-	    colDf = colDf.withColumn("predicted", lit(colDf.head().getAs[String]("label")));
+//	    colDf = colDf.withColumn("predicted", lit(colDf.head().getAs[String]("label")));
 	    rowNums.foreach(rowId => {
 //	      println("ROW ID: " + rowId + " ----- " + consolidated_df.where(col("rowId").equalTo(rowId)).select("predicted").collectAsList().get(0).getString(0));	      
 	      consolidated_df = consolidated_df.withColumn("predicted", 
@@ -210,7 +210,7 @@ object Process extends App with Context {
 //	        when(consolidated_df.col("rowId").isin(rowNums:_*), lit(colDf.head().getAs[String]("label")))
 //	        .otherwise(consolidated_df.col("predicted")));
 	  } else {
-	    colDf = colDf.withColumn("predicted", lit("?"));
+//	    colDf = colDf.withColumn("predicted", lit("?"));
 	    rowNums.foreach(rowId => {
 //	      println("ROW ID: " + rowId + " ----- " + consolidated_df.where(col("rowId").equalTo(rowId)).select("predicted").collectAsList().get(0).getString(0));
 //	      
@@ -222,8 +222,8 @@ object Process extends App with Context {
 //	        when(consolidated_df.col("rowId").isin(rowNums:_*), lit("?"))
 //	        .otherwise(consolidated_df.col("predicted")))
 	  }
-	    	  
-  	colDf.show();
+//	  consolidated_df.cache();
+//  	colDf.show();
     x
 	})
 	

@@ -15,6 +15,7 @@ trait Context {
 //    .set("spark.executor.memory", "1g")
 //    .set("spark.driver.memory", "4g")
     .set("spark.serializer", "org.apache.spark.serializer.KryoSerializer")
+    .set("spark.sql.codegen.wholeStage", "false")
 
     sparkConf.registerKryoClasses(Array(classOf[ItemSet], classOf[ItemsMapTrans]))
   lazy val sparkSession = SparkSession

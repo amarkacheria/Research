@@ -18,12 +18,12 @@ import com.amar.research.Utils.{ getMean, getRound, getTRange, getVariance};
 object Process extends App with Context {
   
   // Configuration
-  val minSupport = 3 // For Charm
-  val minSupportCol = 3; // For filtering concepts
+  val minSupport = 5 // For Charm
+  val minSupportCol = 2  ; // For filtering concepts
 	val numPartitions = 1
 //	val inputFileLocation = "src/resources/test-data/test-dataset-labels-merged.csv";
 	val inputFileLocation = "src/resources/glass-data/glass-data.csv";
-	val outputFileLocation = inputFileLocation.substring(0, inputFileLocation.length()-4) + "-output";
+	val outputFileLocation = inputFileLocation.substring(0, inputFileLocation.length()-4) + "-output-1";
 	val isRowIdPresent = true;
 
   // Read Data

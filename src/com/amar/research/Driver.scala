@@ -22,8 +22,8 @@ object Process extends App with Context {
   val minSupportCol = 3; // For filtering concepts
 	val numPartitions = 1
 //	val inputFileLocation = "src/resources/test-data/test-dataset-labels-merged.csv";
-	val inputFileLocation = "src/resources/glass-data/glass-data-normalized.csv";
-	val outputFileLocation = inputFileLocation.substring(0, inputFileLocation.length()-4) + "-output2";
+	val inputFileLocation = "src/resources/glass-data/glass-data.csv";
+	val outputFileLocation = inputFileLocation.substring(0, inputFileLocation.length()-4) + "-output";
 	val isRowIdPresent = true;
 
   // Read Data

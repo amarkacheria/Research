@@ -17,13 +17,14 @@ import com.amar.research.Utils.{ getMean, getRound, getTRange, getVariance};
 
 object Process extends App with Context {
   
+  import Process.sparkSession.implicits._
   // Configuration
-  val minSupport = 3 // For Charm
+  val minSupport = 7 // For Charm
   val minSupportCol = 3; // For filtering concepts
 	val numPartitions = 1
 //	val inputFileLocation = "src/resources/test-data/test-dataset-labels-merged.csv";
-	val inputFileLocation = "src/resources/glass-data/glass-data-normalized.csv";
-	val outputFileLocation = inputFileLocation.substring(0, inputFileLocation.length()-4) + "-output2";
+	val inputFileLocation = "src/resources/glass-data/glass-data.csv";
+	val outputFileLocation = inputFileLocation.substring(0, inputFileLocation.length()-4) + "-output";
 	val isRowIdPresent = true;
 
   // Read Data
@@ -147,6 +148,7 @@ object Process extends App with Context {
 	val origDf = sparkSession.createDataFrame(origFileToDf, org.apache.spark.sql.types.StructType(schema));
 	var consolidated_df = origDf.withColumn("predicted", lit(""));
 	
+	
 	df.show(2);
 	filteredConcepts.collect().foreach(x => {
 	  println(" ");
@@ -156,9 +158,9 @@ object Process extends App with Context {
 	  val colNames = colNamesStr.split(" ");
 	  val bicCols = colNames.drop(1).dropRight(1);
 	  // Create new DF with rows from this bicluster
-	  val rowsDf = df.where(col("rowId").isin(rowNums:_*));	  
+	  val rowsDf = consolidated_df.where(col("rowId").isin(rowNums:_*));
 	  // Keep only columns which are part of this bicluster in the DF, rowId, and label
-	  var colDf = rowsDf.select(colNames.head, colNames.tail:_*);
+	  var colDf = rowsDf.select(colNames.head, colNames.tail:_*).drop("predicted");
 	  
 	  colDf.show();
 	  var labelsSame = 0;
@@ -196,22 +198,43 @@ object Process extends App with Context {
 	  
 	  if (labelsSame >= labelsDifferent) {
 	    colDf = colDf.withColumn("predicted", lit(colDf.head().getAs[String]("label")));
-	    consolidated_df = consolidated_df.withColumn("predicted",
-	        when(consolidated_df.col("rowId").isin(rowNums:_*), lit(colDf.head().getAs[String]("label")))
-	        .otherwise(consolidated_df.col("predicted")));
+	    rowNums.foreach(rowId => {
+//	      println("ROW ID: " + rowId + " ----- " + consolidated_df.where(col("rowId").equalTo(rowId)).select("predicted").collectAsList().get(0).getString(0));	      
+	      consolidated_df = consolidated_df.withColumn("predicted", 
+	        when(consolidated_df.col("rowId").equalTo(rowId), lit( consolidated_df.where(col("rowId").equalTo(rowId)).select("predicted").collectAsList().get(0).getString(0) + "," 
+	            + colDf.head().getAs[String]("label")))
+	        .otherwise(consolidated_df.col("predicted")))
+	    })
+	    
+//	    consolidated_df = consolidated_df.withColumn("predicted",
+//	        when(consolidated_df.col("rowId").isin(rowNums:_*), lit(colDf.head().getAs[String]("label")))
+//	        .otherwise(consolidated_df.col("predicted")));
 	  } else {
 	    colDf = colDf.withColumn("predicted", lit("?"));
-	    consolidated_df = consolidated_df.withColumn("predicted", 
-	        when(consolidated_df.col("rowId").isin(rowNums:_*), lit("?"))
+	    rowNums.foreach(rowId => {
+//	      println("ROW ID: " + rowId + " ----- " + consolidated_df.where(col("rowId").equalTo(rowId)).select("predicted").collectAsList().get(0).getString(0));
+//	      
+	      consolidated_df = consolidated_df.withColumn("predicted", 
+	        when(consolidated_df.col("rowId").equalTo(rowId), lit( consolidated_df.where(col("rowId").equalTo(rowId)).select("predicted").collectAsList().get(0).getString(0) + "," + "?"))
 	        .otherwise(consolidated_df.col("predicted")))
+	    })
+//	    consolidated_df = consolidated_df.withColumn("predicted", 
+//	        when(consolidated_df.col("rowId").isin(rowNums:_*), lit("?"))
+//	        .otherwise(consolidated_df.col("predicted")))
 	  }
 	    	  
   	colDf.show();
     x
 	})
+	
+//	df.withColumn("cutted", expr("substring(value, 1, length(value)-1)"))
 
+	val formatted_df = consolidated_df.withColumn("predicted", 
+	    when(col("predicted").startsWith(","), expr("substring(predicted, 2, length(predicted))"))
+	    .otherwise(col("predicted")))
 	consolidated_df.show(25);
-	consolidated_df.coalesce(1).write.csv(outputFileLocation);
+	formatted_df.show(25);
+	formatted_df.coalesce(1).write.csv(outputFileLocation);
 	
 	// Pick the largest biclusters - Done
 	// Load the rows and columns data, including labels - Done

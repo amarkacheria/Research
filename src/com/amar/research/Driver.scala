@@ -11,24 +11,32 @@ import org.apache.spark.sql.types._;
 import org.apache.spark.sql.types.StructType;
 import org.apache.spark
 import org.apache.spark;
+import org.apache.spark.mllib.evaluation.MulticlassMetrics;
+import scala.sys.process.stringToProcess;
+
 
 import com.amar.research.utils.Context;
 import com.amar.research.Utils.{ getMean, getRound, getTRange, getVariance};
 
 object Process extends App with Context {
-  
+  import sparkSession.implicits._;
   // Configuration
-  val minSupport = 3 // For Charm
-  val minSupportCol = 3; // For filtering concepts
+  val minSupport = 25 // For Charm
+  val minSupportCol = 2; // For filtering concepts
 	val numPartitions = 1
-	val inputFileLocation = "src/resources/test-data/test-dataset-label.csv";
+	val inputFileLocation = "src/resources/bank-data/bank-data-normalized-ceilinged-2to-2.csv";
 //	val inputFileLocation = "src/resources/glass-data/glass-data-normalized.csv";
-	val outputFileLocation = inputFileLocation.substring(0, inputFileLocation.length()-4) + "-output";
+	val outputFileLocation = inputFileLocation.substring(0, inputFileLocation.length()-4) + "-output2";
 	val isRowIdPresent = true;
 
   // Read Data
 	val origData = sparkSession.sparkContext.textFile(inputFileLocation);
 	origData.take(5).map(println);
+	
+	// runs command fine
+	// output is printed but needs to be parsed out and used. 
+	val proc = stringToProcess("cmd /C trimax ./trimax/sample.txt 2 2 1 4 5");
+  println(proc.!!)
 	
 	//-----------------------------------------------------------------------------------
 	// 1. Preprocessing
@@ -48,15 +56,15 @@ object Process extends App with Context {
    
 
   // T-Range Generation for mean-ranges for test-dataset
-	val trange1 = getTRange(0.00, 1, 0.1, 0.025)
-	val trange2 = getTRange(1,10,1, 0.25)
-	val trange3 = getTRange(10,50,5,1)
-	val trange4 = getTRange(50, 700, 25, 5)
-	val trange = List.concat(trange1, trange2, trange3, trange4);
+//	val trange1 = getTRange(0.00, 1, 0.1, 0.025)
+//	val trange2 = getTRange(1,10,1, 0.25)
+//	val trange3 = getTRange(10,50,5,1)
+//	val trange4 = getTRange(50, 700, 25, 5)
+//	val trange = List.concat(trange1, trange2, trange3, trange4);
 	
  // T-Range Generation for mean-ranges for glass-dataset
 //	val trange = getTRange(0.00, 80, 0.1, 0.025);
-//	val trange = getTRange(-5, 5, 0.333333, 0.2);
+	val trange = getTRange(-2, 2, 0.1, 0.025);
 	
 	
 	// Print trange
@@ -137,10 +145,10 @@ object Process extends App with Context {
 	validationRows.take(5).map((x) => println(x));
 
 	// Convert validation rows to DataFrame for easier manipulation
-	val fileToDf = validationRows.map{ case(x, y) => TestData.mapToDF(x, y)};
-	val origFileToDf = allRows.map{ case(x, y) => TestData.mapToDF(x, y)};
+	val fileToDf = validationRows.map{ case(x, y) => BankData.mapToDF(x, y)};
+	val origFileToDf = allRows.map{ case(x, y) => BankData.mapToDF(x, y)};
 	
-	val schema = TestData.getTestSchema();
+	val schema = BankData.getBankSchema();
 	// GlassData.getGlassSchema();
 	
 	val df = sparkSession.createDataFrame(fileToDf, org.apache.spark.sql.types.StructType(schema));
@@ -148,6 +156,7 @@ object Process extends App with Context {
 	var consolidated_df = origDf.withColumn("predicted", lit(""));
 	
 	df.show(2);
+	var csvCount = 1;
 	filteredConcepts.collect().foreach(x => {
 	  println(" ");
 	  println("xxxxxxxxxxxxxxx------------------------------------------------------------------");
@@ -174,13 +183,21 @@ object Process extends App with Context {
 	    val withId = colSortedDF.withColumn("_id", monotonically_increasing_id()).orderBy("_id");
 	    withId.show();
   	  val firstRow = withId.head(1).apply(0);
+  	  val secondRow = withId.head(2).apply(1);
       val lastRow = withId.orderBy(desc("_id")).head(1).apply(0);
+      val secondLastRow = withId.orderBy(desc("_id")).head(2).apply(1);
   	  println(firstRow.mkString(" "));
+  	  println(secondRow.mkString(" "));
   	  println(lastRow.mkString(" "));
+  	  println(secondLastRow.mkString(" "));
   	  println("First row label: " + firstRow.getAs[String]("label") + " when sorting by column: " + colName);
+  	  println("Second row label: " + secondRow.getAs[String]("label") + " when sorting by column: " + colName);
   	  println("Last row label: " + lastRow.getAs[String]("label") + " when sorting by column: " + colName);
+  	  println("Second Last row label: " + secondLastRow.getAs[String]("label") + " when sorting by column: " + colName);
   	  
-	    if (firstRow.getAs[String]("label") != lastRow.getAs[String]("label")) {
+	    if (firstRow.getAs[String]("label") != lastRow.getAs[String]("label") || 
+	        firstRow.getAs[String]("label") != secondRow.getAs[String]("label") || 
+	        firstRow.getAs[String]("label") != secondLastRow.getAs[String]("label")) {
 	      println("LABELS ARE DIFFERENT!!")
 	      labelsDifferent = labelsDifferent + 1;
   	  } else {
@@ -199,11 +216,29 @@ object Process extends App with Context {
 	    consolidated_df = consolidated_df.withColumn("predicted",
 	        when(consolidated_df.col("rowId").isin(rowNums:_*), lit(colDf.head().getAs[String]("label")))
 	        .otherwise(consolidated_df.col("predicted")));
+	    
+//	    rowNums.foreach(rowId => {
+//	      consolidated_df = consolidated_df.withColumn("predicted", 
+//	        when(consolidated_df.col("rowId").equalTo(rowId), lit( consolidated_df.where(col("rowId").equalTo(rowId)).select("predicted").collectAsList().get(0).getString(0) + "," 
+//	            + colDf.head().getAs[String]("label")))
+//	        .otherwise(consolidated_df.col("predicted")))
+//	    })
 	  } else {
 	    colDf = colDf.withColumn("predicted", lit("?"));
 	    consolidated_df = consolidated_df.withColumn("predicted", 
 	        when(consolidated_df.col("rowId").isin(rowNums:_*), lit("?"))
 	        .otherwise(consolidated_df.col("predicted")))
+       
+	    // save biclusters in text file for trimax algorithm
+	    // potentially call the trimax algofrom here -- sys.process stringToProcess() 
+	    // https://stackoverflow.com/questions/38813810/how-to-execute-system-commands-in-scala
+      var new_colDf = colDf;
+      val columnNames = Seq("rowId","label","0","1","2","3")
+      new_colDf = new_colDf.select( new_colDf.columns.intersect(columnNames).map(x=>col(x)): _* );
+	    println( "saving to csv folder - " + csvCount);
+      
+      new_colDf.coalesce(1).write.mode(SaveMode.Overwrite).format("csv").option("header", "true").save("src/resources/bank-data/csv/" + csvCount);
+      csvCount = csvCount+1;
 	  }
 	    	  
   	colDf.show();
@@ -211,7 +246,24 @@ object Process extends App with Context {
 	})
 
 	consolidated_df.show(25);
-	consolidated_df.coalesce(1).write.csv(outputFileLocation);
+	
+	
+	
+	
+	
+	val predictionAndLabels = consolidated_df.select("label","predicted").map( row => {
+	    var prediction = row.getAs[String](1);
+	    if(prediction == "?") prediction="99.0";
+	    if (prediction == "") prediction = "100.0";
+	    val doublePrediction = prediction.toDouble
+	    
+	    (doublePrediction, row(0).asInstanceOf[Int].toDouble)
+	  }).rdd
+	
+	val metrics = new MulticlassMetrics(predictionAndLabels);
+	println("Confusion matrix:")
+  println(metrics.confusionMatrix)
+	consolidated_df.coalesce(1).write.mode(SaveMode.Overwrite).csv(outputFileLocation);
 	
 	// Pick the largest biclusters - Done
 	// Load the rows and columns data, including labels - Done

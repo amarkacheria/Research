@@ -1,5 +1,6 @@
 package com.amar.research;
 
+import com.amar.research.Process2;
 import scala.collection.mutable.ListBuffer;
 import scala.collection.mutable;
 import com.amar.research.{ItemsMapTrans};
@@ -32,11 +33,6 @@ object Process extends App with Context {
   // Read Data
 	val origData = sparkSession.sparkContext.textFile(inputFileLocation);
 	origData.take(5).map(println);
-	
-	// runs command fine
-	// output is printed but needs to be parsed out and used. 
-	val proc = stringToProcess("cmd /C trimax ./trimax/sample.txt 2 2 1 4 5");
-  println(proc.!!)
 	
 	//-----------------------------------------------------------------------------------
 	// 1. Preprocessing

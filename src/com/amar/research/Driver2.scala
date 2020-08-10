@@ -2,7 +2,6 @@ package com.amar.research;
 
 import scala.collection.mutable.ListBuffer;
 import scala.collection.mutable;
-import com.amar.research.{ ItemsMapTrans };
 import scala.collection._;
 import org.apache.spark.sql.DataFrame;
 import org.apache.spark.sql._;
@@ -12,7 +11,9 @@ import org.apache.spark.sql.types.StructType;
 import org.apache.spark
 import org.apache.spark;
 import org.apache.spark.mllib.evaluation.MulticlassMetrics;
+import org.apache.spark.rdd.RDD;
 import scala.sys.process.stringToProcess;
+import java.io._;
 
 import com.amar.research.utils.Context;
 import com.amar.research.Utils.{ getMean, getRound, getTRange, getVariance };
@@ -23,9 +24,9 @@ object Process2 extends App with Context {
 
   import sparkSession.implicits._;
   // Configuration
-  val inputFileLocation = "src/resources/bank-data/bank-data-normalized-ceilinged-2to-2-output2/*.csv";
+  val inputFileLocation = "src/resources/bank-data/bank-data-normalized-ceilinged-2to-2-output/*.csv";
   println(inputFileLocation);
-  val output2FileLocation = inputFileLocation.substring(0, inputFileLocation.length() - 6) + "-driver2-output";
+  val output2FileLocation = inputFileLocation.substring(0, inputFileLocation.length() - 6) + "-trimax-output";
 
   // Read Data
   val predictedData = sparkSession.sparkContext.textFile(inputFileLocation);
@@ -35,22 +36,30 @@ object Process2 extends App with Context {
   val schema = BankData.getBankSchemaPredicted();
   var df = sparkSession.createDataFrame(fileToDf, org.apache.spark.sql.types.StructType(schema));
 
+  // For some reason, reading empty strings (added in driver1) is a bit weird
+  // need to check for escaped quotes. 
   df = df.withColumn(
     "predicted",
     when(
       df.col("predicted").equalTo("\"\""),
-      lit("-"))
+      lit(""))
       .otherwise(df.col("predicted")));
+  
+  var dfHashMap = df.rdd.map{
+    case Row(rowNum: Int, col0: Double, col1: Double, col2: Double, col3: Double, label: Int, predicted: String) => (rowNum, predicted)
+  }.collectAsMap();
+  
+  val mutableHashMap = mutable.Map(dfHashMap.toSeq: _*);
 
   // runs command fine
   // output is printed but needs to be parsed out and used.
   //  var errorFound = false;
   var fileCounter = 1;
-  var minColsCounter = 1;
+  var minColsCounter = 3;
   while (minColsCounter >= 1) {
     try {
       println("File: " + fileCounter);
-      val proc = stringToProcess("cmd /C trimax ./src/resources/bank-data/csv/" + fileCounter + "/*.csv 0.4 10 " + minColsCounter + " 50 4");
+      val proc = stringToProcess("cmd /C trimax ./src/resources/bank-data/csv/" + fileCounter + "/*.csv 0.3 5 " + minColsCounter + " 25 " + minColsCounter);
       // check the top bottom labels
       val result = proc.!!;
       println(result);
@@ -106,13 +115,22 @@ object Process2 extends App with Context {
           println("Labels Same: " + labelsSame + "    Labels Different: " + labelsDifferent);
           println(" ");
           if (labelsSame > labelsDifferent) {
-              df = df.withColumn(
-                "predicted",
-                when(($"rowId" isin (rowNums: _*)) && ($"predicted"===lit("?")),
-                  lit(colDf.head().getAs[String]("label")))
-                  .otherwise(df.col("predicted")));
-              df.unpersist();
-              df.cache();
+//              df = df.withColumn(
+//                "predicted",
+//                when(($"rowId" isin (rowNums: _*)) && ($"predicted"===lit("?")),
+//                  lit(colDf.head().getAs[String]("label")))
+//                  .otherwise(df.col("predicted")));
+//              df.unpersist();
+//              df.cache();
+            
+            rowNums.foreach(rowId => {
+              
+              if (mutableHashMap.get(rowId) != "?") {
+                mutableHashMap.update(rowId, colDf.head().getAs[String]("label"));
+              }
+              
+            });
+            
           }
         });
       }
@@ -132,24 +150,46 @@ object Process2 extends App with Context {
       }
     }
   }
+  
+  val updatedRDDMap = df.rdd.map{
+    case Row(rowNum: Int, col0: Double, col1: Double, col2: Double, col3: Double, label: Int, predicted: String) => {
+      Row(rowNum, col0, col1, col2, col3, label, String.valueOf(mutableHashMap.get(rowNum).get))
+    }
+  }
+  
+  println("updatedRDDMap done");
+  
+  val finalDf = sparkSession.createDataFrame(updatedRDDMap, org.apache.spark.sql.types.StructType(BankData.getBankSchemaPredicted()));
 
-  df.show(false);
-
-  val predictionAndLabels = df.select("label", "predicted").map(row => {
+  finalDf.show();
+  
+  val predictionAndLabels = finalDf.select("label", "predicted").map(row => {
     var prediction = row.getAs[String](1);
     if (prediction == "?") prediction = "99.0";
     else if (prediction == "") prediction = "100.0";
-    else if (prediction == "-") prediction = "101.0";
 
     val doublePrediction = prediction.toDouble;
 
     (doublePrediction, row(0).asInstanceOf[Int].toDouble)
   }).rdd
-
-  val metrics = new MulticlassMetrics(predictionAndLabels);
+  
+  // represents "?" and "" (empty string) which are not there in dataset but predictions may contain those characters. 
+  val additionalLabels: RDD[(Double, Double)] = sparkSession.sparkContext.parallelize(Seq((99.0, 99.0), (100.0, 100.0)));
+	  
+  val metrics = new MulticlassMetrics(predictionAndLabels.++(additionalLabels));
   println("Confusion matrix:")
   println(metrics.confusionMatrix)
-  df.coalesce(1).write.mode(SaveMode.Overwrite).csv(output2FileLocation);
+  
+  finalDf.coalesce(1).write.mode(SaveMode.Overwrite).csv(output2FileLocation);
+  val pw = new PrintWriter(new File(output2FileLocation + "/confusion-matrix.txt" ));
+  pw.write(metrics.labels.map(_.toString).mkString(","))
+  pw.write("\r\n");
+  pw.write("\r\n");
+  pw.write("------------------------------------------- \r\n");
+  pw.write(metrics.confusionMatrix.toString)
+  pw.write("\r\n");
+  pw.write("------------------------------------------- \r\n");
+  pw.close
 
   println("Done");
 

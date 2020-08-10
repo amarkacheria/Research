@@ -14,6 +14,8 @@ import org.apache.spark
 import org.apache.spark;
 import org.apache.spark.mllib.evaluation.MulticlassMetrics;
 import scala.sys.process.stringToProcess;
+import org.apache.spark.rdd.RDD;
+import java.io._;
 
 
 import com.amar.research.utils.Context;
@@ -27,7 +29,7 @@ object Process extends App with Context {
 	val numPartitions = 1
 	val inputFileLocation = "src/resources/bank-data/bank-data-normalized-ceilinged-2to-2.csv";
 //	val inputFileLocation = "src/resources/glass-data/glass-data-normalized.csv";
-	val outputFileLocation = inputFileLocation.substring(0, inputFileLocation.length()-4) + "-output2";
+	val outputFileLocation = inputFileLocation.substring(0, inputFileLocation.length()-4) + "-output";
 	val isRowIdPresent = true;
 
   // Read Data
@@ -98,15 +100,6 @@ object Process extends App with Context {
 	groupAfterCharm.take(5).map(println);
 	
 	println("---------------------------------------------------------------------------------------------------------------------------");
-
-//	groupAfterCharm.collect().map(x => {
-//	  println(x);
-//	  println(x._1);
-//	  println(x._2.foreach(print(_)));
-//	  x._2.map( x=> {print(x); print(" ")}) 
-////	  x._2.filter(c => c.split(" ").size > minSupportCol)
-//	  println("---------------------------------------------------------------");
-//	});
 	
 	val filteredConcepts = groupAfterCharm
 	.filter( _._2.filter(c => c.split(" ").size > minSupportCol).size > 0)
@@ -121,6 +114,7 @@ object Process extends App with Context {
 	    conceptRows+=(rowStr.toInt)
 	  });
 	})
+	
 	// Remove duplicate rows from concept rows so the set of validation rows is created
 	val uniqueRows = conceptRows.distinct;
 	
@@ -149,13 +143,19 @@ object Process extends App with Context {
 	
 	val df = sparkSession.createDataFrame(fileToDf, org.apache.spark.sql.types.StructType(schema));
 	val origDf = sparkSession.createDataFrame(origFileToDf, org.apache.spark.sql.types.StructType(schema));
-	var consolidated_df = origDf.withColumn("predicted", lit(""));
 	
-	df.show(2);
+	val origDf_predicted = origDf.withColumn("predicted", lit(""));
+	
+	var predictedDfMap = origDf_predicted.rdd.map{
+    case Row(rowNum: Int, col0: Double, col1: Double, col2: Double, col3: Double, label: Int, predicted: String) => (rowNum, predicted)
+  }.collectAsMap();
+  
+  val mutablePredictedMap = mutable.Map(predictedDfMap.toSeq: _*);
+	
 	var csvCount = 1;
 	filteredConcepts.collect().foreach(x => {
 	  println(" ");
-	  println("xxxxxxxxxxxxxxx------------------------------------------------------------------");
+	  println("xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx");
 	  val rowNums = x._1.split(" ").map(_.toInt).toSeq;
 	  val colNamesStr = "rowId " + x._2.maxBy(_.split(" ").size) + " label";
 	  val colNames = colNamesStr.split(" ");
@@ -165,7 +165,6 @@ object Process extends App with Context {
 	  // Keep only columns which are part of this bicluster in the DF, rowId, and label
 	  var colDf = rowsDf.select(colNames.head, colNames.tail:_*);
 	  
-	  colDf.show();
 	  var labelsSame = 0;
 	  var labelsDifferent = 0;
 
@@ -177,7 +176,6 @@ object Process extends App with Context {
 	  bicCols.foreach(colName => {
 	    val colSortedDF = colDf.orderBy(asc(colName));
 	    val withId = colSortedDF.withColumn("_id", monotonically_increasing_id()).orderBy("_id");
-	    withId.show();
   	  val firstRow = withId.head(1).apply(0);
   	  val secondRow = withId.head(2).apply(1);
       val lastRow = withId.orderBy(desc("_id")).head(1).apply(0);
@@ -190,6 +188,7 @@ object Process extends App with Context {
   	  println("Second row label: " + secondRow.getAs[String]("label") + " when sorting by column: " + colName);
   	  println("Last row label: " + lastRow.getAs[String]("label") + " when sorting by column: " + colName);
   	  println("Second Last row label: " + secondLastRow.getAs[String]("label") + " when sorting by column: " + colName);
+  	  println(" ");
   	  
 	    if (firstRow.getAs[String]("label") != lastRow.getAs[String]("label") || 
 	        firstRow.getAs[String]("label") != secondRow.getAs[String]("label") || 
@@ -202,16 +201,23 @@ object Process extends App with Context {
   	  }
 	  })
 	  
-	  println(" ");
+	  println("------------------------------------------");
 	  println("Final Tally: ");
 	  println( "labels same: " + labelsSame);
 	  println( "labels different: " + labelsDifferent);
+	  println("------------------------------------------");
 	  
 	  if (labelsSame >= labelsDifferent) {
-	    colDf = colDf.withColumn("predicted", lit(colDf.head().getAs[String]("label")));
-	    consolidated_df = consolidated_df.withColumn("predicted",
-	        when(consolidated_df.col("rowId").isin(rowNums:_*), lit(colDf.head().getAs[String]("label")))
-	        .otherwise(consolidated_df.col("predicted")));
+//	    colDf = colDf.withColumn("predicted", lit(colDf.head().getAs[String]("label")));
+//	    consolidated_df = consolidated_df.withColumn("predicted",
+//	        when(consolidated_df.col("rowId").isin(rowNums:_*), lit(colDf.head().getAs[String]("label")))
+//	        .otherwise(consolidated_df.col("predicted")));
+	    
+	    rowNums.foreach(rowId => {
+          mutablePredictedMap.update(rowId, colDf.head().getAs[String]("label"));
+      });
+	    
+	    // append labels as update insteda of replacing to keep track of different predictions for same row
 	    
 //	    rowNums.foreach(rowId => {
 //	      consolidated_df = consolidated_df.withColumn("predicted", 
@@ -220,10 +226,16 @@ object Process extends App with Context {
 //	        .otherwise(consolidated_df.col("predicted")))
 //	    })
 	  } else {
-	    colDf = colDf.withColumn("predicted", lit("?"));
-	    consolidated_df = consolidated_df.withColumn("predicted", 
-	        when(consolidated_df.col("rowId").isin(rowNums:_*), lit("?"))
-	        .otherwise(consolidated_df.col("predicted")))
+//	    colDf = colDf.withColumn("predicted", lit("?"));
+//	    consolidated_df = consolidated_df.withColumn("predicted", 
+//	        when(consolidated_df.col("rowId").isin(rowNums:_*), lit("?"))
+//	        .otherwise(consolidated_df.col("predicted")))
+	        
+      rowNums.foreach(rowId => {
+          mutablePredictedMap.update(rowId, "?");
+      });
+	    
+	    // append labels as update insteda of replacing to keep track of different predictions for same row
        
 	    // save biclusters in text file for trimax algorithm
 	    // potentially call the trimax algofrom here -- sys.process stringToProcess() 
@@ -236,31 +248,47 @@ object Process extends App with Context {
       new_colDf.coalesce(1).write.mode(SaveMode.Overwrite).format("csv").option("header", "true").save("src/resources/bank-data/csv/" + csvCount);
       csvCount = csvCount+1;
 	  }
-	    	  
-  	colDf.show();
     x
 	})
 
-	consolidated_df.show(25);
+//	consolidated_df.show(25);
 	
+	val updatedRDDMap = origDf_predicted.rdd.map{
+    case Row(rowNum: Int, col0: Double, col1: Double, col2: Double, col3: Double, label: Int, predicted: String) => {
+      Row(rowNum, col0, col1, col2, col3, label, String.valueOf(mutablePredictedMap.get(rowNum).get))
+    }
+  }
+  
+  val finalDf = sparkSession.createDataFrame(updatedRDDMap, org.apache.spark.sql.types.StructType(BankData.getBankSchemaPredicted()));
+
+  finalDf.show();	
 	
-	
-	
-	
-	val predictionAndLabels = consolidated_df.select("label","predicted").map( row => {
+	val predictionAndLabels = finalDf.select("label","predicted").map( row => {
 	    var prediction = row.getAs[String](1);
 	    if(prediction == "?") prediction="99.0";
-	    if (prediction == "") prediction = "100.0";
+	    if (prediction == "") prediction = "100.00";
 	    val doublePrediction = prediction.toDouble
 	    
 	    (doublePrediction, row(0).asInstanceOf[Int].toDouble)
 	  }).rdd
 	
-	val metrics = new MulticlassMetrics(predictionAndLabels);
+  val additionalLabels: RDD[(Double, Double)] = sparkSession.sparkContext.parallelize(Seq((99.0, 99.0), (100.0, 100.0)))
+
+	val metrics = new MulticlassMetrics(predictionAndLabels.++(additionalLabels));
+
 	println("Confusion matrix:")
-  println(metrics.confusionMatrix)
-	consolidated_df.coalesce(1).write.mode(SaveMode.Overwrite).csv(outputFileLocation);
-	
+  println(metrics.confusionMatrix);
+  
+	finalDf.coalesce(1).write.mode(SaveMode.Overwrite).csv(outputFileLocation);  
+  val pw = new PrintWriter(new File(outputFileLocation + "/confusion-matrix.txt" ))
+  pw.write(metrics.labels.map(_.toString).mkString(","))
+  pw.write("\r\n");
+  pw.write("\r\n");
+  pw.write("------------------------------------------- \r\n");
+  pw.write(metrics.confusionMatrix.toString)
+  pw.write("\r\n");
+  pw.write("------------------------------------------- \r\n");
+  pw.close
 	// Pick the largest biclusters - Done
 	// Load the rows and columns data, including labels - Done
 	// Sort the data by one col at a time - Done
@@ -292,7 +320,7 @@ object Process extends App with Context {
   });
 	
 	// save finalConcepts to file
-	finalConcepts.coalesce(1).saveAsTextFile("src/resources/output/final");
+	finalConcepts.coalesce(1).saveAsTextFile(outputFileLocation + "/concepts/");
 	
 	println("---------------------------------------------------------------------------------------------------------------------------");
 	println("Thread is now sleeping...");

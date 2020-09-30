@@ -1,0 +1,17 @@
+Charm Min Support
+
+Rows = 10
+Cols = 3
+
+Trimax
+
+Theta (Range) = 0.3
+Min Rows = 5
+Max Rows = 25
+Min Cols = 1
+Max Cols = 3
+
+
+Driver 1 Labels Needed = 471
+Driver 2 Labels Needed = 1232
+Combined Labels Needed = 1280

@@ -37,8 +37,10 @@ object PreProcess {
 								meanRange = x._1.toString() + ":" + x._2.toString();
 							}
 						})
-						//        if (covariance <= 0.10) { }
-						results(index) = meanRange + "\t" + finalStr;
+						        if (covariance <= 0.05) { 
+						          
+						          results(index) = meanRange + "\t" + finalStr;
+						        }
 				}
 			}
 			return results.filter(p => {

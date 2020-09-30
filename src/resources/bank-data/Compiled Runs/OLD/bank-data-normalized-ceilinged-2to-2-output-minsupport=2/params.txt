@@ -1,0 +1,8 @@
+Charm Min Support
+
+Rows= 25
+Cols = 2
+
+Results are poor, many more incorrect predictions
+
+So going to 2 cols from 3 is not good. 

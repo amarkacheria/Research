@@ -24,12 +24,16 @@ import com.amar.research.Utils.{ getMean, getRound, getTRange, getVariance};
 object Process extends App with Context {
   import sparkSession.implicits._;
   // Configuration
-  val minSupport = 25 // For Charm
-  val minSupportCol = 2; // For filtering concepts
-	val numPartitions = 1
-	val inputFileLocation = "src/resources/bank-data/bank-data-normalized-ceilinged-2to-2.csv";
+  val minSupport = 10; // For Charm
+  val minSupportCol = 1; // For filtering concepts
+	val numPartitions = 1;
+	val inputFileLocation = "src/resources/bank-data/bank-data-normalized-ceilinged-0to-4.csv";
 //	val inputFileLocation = "src/resources/glass-data/glass-data-normalized.csv";
-	val outputFileLocation = inputFileLocation.substring(0, inputFileLocation.length()-4) + "-output";
+	val outputFileLocation = inputFileLocation.substring(0, inputFileLocation.length()-40) + "output";
+// T-Range Generation for mean-ranges for glass-dataset
+//	val trange = getTRange(0.00, 80, 0.1, 0.025);
+	val trange = getTRange(0.0, 4.0, 0.05, 0.01);
+	
 	val isRowIdPresent = true;
 
   // Read Data
@@ -58,12 +62,7 @@ object Process extends App with Context {
 //	val trange2 = getTRange(1,10,1, 0.25)
 //	val trange3 = getTRange(10,50,5,1)
 //	val trange4 = getTRange(50, 700, 25, 5)
-//	val trange = List.concat(trange1, trange2, trange3, trange4);
-	
- // T-Range Generation for mean-ranges for glass-dataset
-//	val trange = getTRange(0.00, 80, 0.1, 0.025);
-	val trange = getTRange(-2, 2, 0.1, 0.025);
-	
+//	val trange = List.concat(trange1, trange2, trange3, trange4);	
 	
 	// Print trange
 	val trangeList = trange.map(x => x._1 + ":" + x._2)
@@ -102,8 +101,10 @@ object Process extends App with Context {
 	println("---------------------------------------------------------------------------------------------------------------------------");
 	
 	val filteredConcepts = groupAfterCharm
-	.filter( _._2.filter(c => c.split(" ").size > minSupportCol).size > 0)
-	.sortBy(_._1.split(" ").length, false, numPartitions).sortBy(_._2.size, false, numPartitions);
+	.filter( _._2.filter(c => c.split(" ").size >= minSupportCol).size > 0)
+	.filter( _._1.split(" ").size >= minSupport)
+	.sortBy(_._2.size, false, numPartitions).sortBy(_._1.split(" ").length, false, numPartitions);
+	
 	
 	filteredConcepts.take(10).map(println);
   
@@ -151,10 +152,12 @@ object Process extends App with Context {
   }.collectAsMap();
   
   val mutablePredictedMap = mutable.Map(predictedDfMap.toSeq: _*);
-	
+	var trainingLabelsSet = mutable.Set[String]();
+  
 	var csvCount = 1;
 	filteredConcepts.collect().foreach(x => {
 	  println(" ");
+	  println(x);
 	  println("xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx");
 	  val rowNums = x._1.split(" ").map(_.toInt).toSeq;
 	  val colNamesStr = "rowId " + x._2.maxBy(_.split(" ").size) + " label";
@@ -167,6 +170,7 @@ object Process extends App with Context {
 	  
 	  var labelsSame = 0;
 	  var labelsDifferent = 0;
+	  var labelsSameLabels =  mutable.ListBuffer[String]();
 
 	  // Sort the data by one col at a time
 	  // Sample the head and tail and check if the same labels
@@ -188,7 +192,11 @@ object Process extends App with Context {
   	  println("Second row label: " + secondRow.getAs[String]("label") + " when sorting by column: " + colName);
   	  println("Last row label: " + lastRow.getAs[String]("label") + " when sorting by column: " + colName);
   	  println("Second Last row label: " + secondLastRow.getAs[String]("label") + " when sorting by column: " + colName);
-  	  println(" ");
+  	  
+  	  trainingLabelsSet.add(firstRow.getAs[String]("rowId"));
+  	  trainingLabelsSet.add(secondRow.getAs[String]("rowId"));
+  	  trainingLabelsSet.add(lastRow.getAs[String]("rowId"));
+  	  trainingLabelsSet.add(secondLastRow.getAs[String]("rowId"));
   	  
 	    if (firstRow.getAs[String]("label") != lastRow.getAs[String]("label") || 
 	        firstRow.getAs[String]("label") != secondRow.getAs[String]("label") || 
@@ -198,7 +206,9 @@ object Process extends App with Context {
   	  } else {
   	    println("LABELS ARE SAME!!!");
   	    labelsSame = labelsSame + 1;
+  	    labelsSameLabels += String.valueOf(firstRow.getAs[String]("label"));
   	  }
+      println(" ");
 	  })
 	  
 	  println("------------------------------------------");
@@ -207,7 +217,14 @@ object Process extends App with Context {
 	  println( "labels different: " + labelsDifferent);
 	  println("------------------------------------------");
 	  
-	  if (labelsSame >= labelsDifferent) {
+	  var allLabelsSame = false;
+	  if (labelsSameLabels.toList.exists(_ != labelsSameLabels.toList.head)) {
+	    allLabelsSame = false;
+	  } else {
+	    allLabelsSame = true;
+	  }
+	  
+	  if (labelsSame > labelsDifferent && allLabelsSame) {
 //	    colDf = colDf.withColumn("predicted", lit(colDf.head().getAs[String]("label")));
 //	    consolidated_df = consolidated_df.withColumn("predicted",
 //	        when(consolidated_df.col("rowId").isin(rowNums:_*), lit(colDf.head().getAs[String]("label")))
@@ -217,7 +234,7 @@ object Process extends App with Context {
           mutablePredictedMap.update(rowId, colDf.head().getAs[String]("label"));
       });
 	    
-	    // append labels as update insteda of replacing to keep track of different predictions for same row
+	    // append labels as update instead of replacing to keep track of different predictions for same row
 	    
 //	    rowNums.foreach(rowId => {
 //	      consolidated_df = consolidated_df.withColumn("predicted", 
@@ -248,6 +265,7 @@ object Process extends App with Context {
       new_colDf.coalesce(1).write.mode(SaveMode.Overwrite).format("csv").option("header", "true").save("src/resources/bank-data/csv/" + csvCount);
       csvCount = csvCount+1;
 	  }
+	  colDf.show();
     x
 	})
 
@@ -288,7 +306,11 @@ object Process extends App with Context {
   pw.write(metrics.confusionMatrix.toString)
   pw.write("\r\n");
   pw.write("------------------------------------------- \r\n");
-  pw.close
+  pw.close();
+  
+  val pw1 = new PrintWriter(new File(outputFileLocation + "/training-labels.txt" ));
+  pw1.write(trainingLabelsSet.mkString("\n"));
+  pw1.close();
 	// Pick the largest biclusters - Done
 	// Load the rows and columns data, including labels - Done
 	// Sort the data by one col at a time - Done
@@ -308,7 +330,7 @@ object Process extends App with Context {
 	// This variable is not used in validation
   val finalConcepts = filteredConcepts.flatMap( x => { 
     val n_trans = x._1.split(" ").size
-    val supportConcepts = x._2.filter(c => c.split(" ").size > minSupportCol);
+    val supportConcepts = x._2.filter(c => c.split(" ").size >= minSupportCol);
     val tup: Array[String] = new Array[String](supportConcepts.size);
     supportConcepts.zipWithIndex.map(c => {
         val n_items = c._1.split(" ").size

@@ -1,0 +1,12 @@
+Charm Min Support
+
+Rows = 10
+Cols = 3
+
+Trimax
+
+Theta (Range) = 0.3
+Min Rows = 5
+Max Rows = 25
+Min Cols = 1
+Max Cols = 3

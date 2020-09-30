@@ -17,6 +17,12 @@ object BankData {
         )
   }
   
+//  def mapToDF(x: String, y: Long): Row = {
+//    return Row(
+//        y.toInt, x.split(",")(0).toDouble, x.split(",")(4).toInt
+//        )
+//  }
+//  
   def getBankSchema(): List[StructField] = {
     return List(
 	    StructField("rowId", IntegerType, true),
@@ -34,6 +40,12 @@ object BankData {
 	      x.split(",")(3).toDouble, x.split(",")(4).toDouble, x.split(",")(5).toInt, x.split(",")(6).toString()
         )
   }
+  
+//  def mapToDFPredicted(x: String): Row = {
+//    return Row(
+//        x.split(",")(0).toInt, x.split(",")(1).toDouble, x.split(",")(5).toInt, x.split(",")(6).toString()
+//        )
+//  }
   
   def getBankSchemaPredicted(): List[StructField] = {
     return List(

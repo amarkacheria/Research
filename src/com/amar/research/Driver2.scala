@@ -24,8 +24,8 @@ object Process2 extends App with Context {
 
   import sparkSession.implicits._;
   // Parameters
-  var theta = 0.05;
-  var minRows = 4;
+  var theta = 0.1;   // 0.05
+  var minRows = 10;    // 4
   var maxRows = 100;
   var minCols = 1;
   
@@ -62,7 +62,7 @@ object Process2 extends App with Context {
 	var trainingLabelsSet = mutable.Set(trainingLabels: _*);
 	println(trainingLabelsSet.size);
 	trainingLabelsSet.map(print);
-
+	
   // runs command fine
   // output is printed but needs to be parsed out and used.
   //  var errorFound = false;

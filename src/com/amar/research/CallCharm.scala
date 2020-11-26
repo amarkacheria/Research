@@ -16,13 +16,14 @@ object CallCharm {
 	  data._2.foreach(item_trans => {
 	    val subStrings = item_trans.split('$');
 	    val columns = subStrings(1).split(',');
-	    val row = subStrings(2).toInt
+	    val col = subStrings(2);
 	    val trans = new mutable.TreeSet[Int]();
 	    
 	    columns.map(x => {
 	      val mapping = x.split("#")
 	      // add col to itemset
-	      val item_set = new ItemSet()+=mapping(0);
+	      val row = mapping(0).toInt;
+	      val item_set = new ItemSet()+=col;
 	      // find if this col already exists in TreeMap
 	      // If exists, add the row to the list of rows already found to have similar values in this col
 	      // If does not exist, create new TreeSet[Int] for this col and add to the TreeMap (imt)

@@ -1,0 +1,19 @@
+Charm Min Support
+
+Rows = 25
+Cols = 1
+Covariance = 0.20
+
+(0.0, 4.0, 0.9, 0.03);
+
+Trimax
+
+Theta (Range) = 0.2
+Min Rows = 10
+Max Rows = 500
+Min Cols = 1
+Max Cols = 3
+
+Driver 1 Labels Needed = 
+Driver 2 Labels Needed = 
+Combined Labels Needed = 

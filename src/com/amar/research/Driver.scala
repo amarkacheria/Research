@@ -16,6 +16,7 @@ import org.apache.spark.mllib.evaluation.MulticlassMetrics;
 import scala.sys.process.stringToProcess;
 import org.apache.spark.rdd.RDD;
 import java.io._;
+import scala.util.control.Breaks._;
 
 
 import com.amar.research.utils.Context;
@@ -27,15 +28,14 @@ object Process extends App with Context {
   val minSupport = 25; // For Charm
   val minSupportCol = 1; // For filtering concepts
 	val numPartitions = 1;
+	val bicValidation = 0.025; // Check 5% of rows from top and bottom for labels
 	val inputFileLocation1 = "src/resources/bank-data/bank-data-normalized-ceilinged-0to-4.csv";
 	val inputFileLocation2 = "src/resources/bank-data/bank-data-normalized-ceilinged-0to-4-transposed.csv";
 //	val inputFileLocation = "src/resources/glass-data/glass-data-normalized.csv";
-	val outputFileLocation = inputFileLocation1.substring(0, inputFileLocation1.length()-40) + "output";
+	val outputFileLocation  = inputFileLocation1.substring(0, inputFileLocation1.length()-40) + "output";
 // T-Range Generation for mean-ranges for glass-dataset
 //	val trange = getTRange(0.00, 80, 0.1, 0.025);
 	val trange = getTRange(0.0, 4.0, 0.9, 0.03);
-	
-	val isRowIdPresent = true;
 
   // Read Original Data
 	val origData = sparkSession.sparkContext.textFile(inputFileLocation1);
@@ -121,25 +121,25 @@ object Process extends App with Context {
 		println("---------------------------------------------------------------------------------------------------------------------------");
 	
 	
-	val level1 = afterCharm.flatMap(x=>x)
-	println("level 1");
-	println(level1.collect().size);
-	level1.take(5).map(println);	
-	println("---------------------------------------------------------------------------------------------------------------------------");
-	
-	
-	val level2 = level1.distinct();
-	println("level 2");
-	println(level2.collect().size);
-	level2.take(5).map(println);
-		println("---------------------------------------------------------------------------------------------------------------------------");
-	
-		
-	val level3 = level2.groupByKey();
-	println("level 3");
-	println(level3.collect().size);
-	level3.take(5).map(println);
-		println("---------------------------------------------------------------------------------------------------------------------------");
+//	val level1 = afterCharm.flatMap(x=>x)
+//	println("level 1");
+//	println(level1.collect().size);
+//	level1.take(5).map(println);	
+//	println("---------------------------------------------------------------------------------------------------------------------------");
+//	
+//	
+//	val level2 = level1.distinct();
+//	println("level 2");
+//	println(level2.collect().size);
+//	level2.take(5).map(println);
+//		println("---------------------------------------------------------------------------------------------------------------------------");
+//	
+//		
+//	val level3 = level2.groupByKey();
+//	println("level 3");
+//	println(level3.collect().size);
+//	level3.take(5).map(println);
+//		println("---------------------------------------------------------------------------------------------------------------------------");
 	
 	
 	val groupAfterCharm = afterCharm.flatMap(x => x).distinct();
@@ -207,6 +207,10 @@ object Process extends App with Context {
     case Row(rowNum: Int, col0: Double, col1: Double, col2: Double, col3: Double, label: Int, predicted: String) => (rowNum, predicted)
   }.collectAsMap();
   
+  var dfLabelHashMap = origDf_predicted.rdd.map{
+    case Row(rowNum: Int, col0: Double, col1: Double, col2: Double, col3: Double, label: Int, predicted: String) => (rowNum, label)
+  }.collectAsMap();
+  
   val mutablePredictedMap = mutable.Map(predictedDfMap.toSeq: _*);
 	var trainingLabelsSet = mutable.Set[String]();
   
@@ -227,6 +231,11 @@ object Process extends App with Context {
 	  var labelsSame = 0;
 	  var labelsDifferent = 0;
 	  var labelsSameLabels =  mutable.ListBuffer[String]();
+	  
+	  var topBottomRows = Math.ceil(bicValidation * rowNums.size).toInt;
+	  if (topBottomRows < 2) {
+	    topBottomRows = 2;
+	  }
 
 	  // Sort the data by one col at a time
 	  // Sample the head and tail and check if the same labels
@@ -236,35 +245,64 @@ object Process extends App with Context {
 	  bicCols.foreach(colName => {
 	    val colSortedDF = colDf.orderBy(asc(colName));
 	    val withId = colSortedDF.withColumn("_id", monotonically_increasing_id()).orderBy("_id");
-  	  val firstRow = withId.head(1).apply(0);
-  	  val secondRow = withId.head(2).apply(1);
-      val lastRow = withId.orderBy(desc("_id")).head(1).apply(0);
-      val secondLastRow = withId.orderBy(desc("_id")).head(2).apply(1);
-  	  println(firstRow.mkString(" "));
-  	  println(secondRow.mkString(" "));
-  	  println(lastRow.mkString(" "));
-  	  println(secondLastRow.mkString(" "));
-  	  println("First row label: " + firstRow.getAs[String]("label") + " when sorting by column: " + colName);
-  	  println("Second row label: " + secondRow.getAs[String]("label") + " when sorting by column: " + colName);
-  	  println("Last row label: " + lastRow.getAs[String]("label") + " when sorting by column: " + colName);
-  	  println("Second Last row label: " + secondLastRow.getAs[String]("label") + " when sorting by column: " + colName);
-  	  
-  	  trainingLabelsSet.add(firstRow.getAs[String]("rowId"));
-  	  trainingLabelsSet.add(secondRow.getAs[String]("rowId"));
-  	  trainingLabelsSet.add(lastRow.getAs[String]("rowId"));
-  	  trainingLabelsSet.add(secondLastRow.getAs[String]("rowId"));
-  	  
-	    if (firstRow.getAs[String]("label") != lastRow.getAs[String]("label") || 
-	        firstRow.getAs[String]("label") != secondRow.getAs[String]("label") || 
-	        firstRow.getAs[String]("label") != secondLastRow.getAs[String]("label")) {
+	    var k = 0;
+	    val firstRowLabel = withId.head(1).apply(0).getAs[Integer]("label").toString();
+	    var areLabelsDifferent = false;
+	    val bottomWithId = withId.orderBy(desc("_id"));
+	    breakable {
+  	    for (k <- 0 to (topBottomRows-1)) {
+            println(withId.head(k+1).apply(k).mkString(" "));
+  	        println(bottomWithId.head(k+1).apply(k).mkString(" "));
+            println("Top " + (k+1) + " row label: " + withId.head(k+1).apply(k).getAs[String]("label") + " when sorting by column: " + colName);
+            println("Bottom " + (k+1) + " row label: " + bottomWithId.head(k+1).apply(k).getAs[String]("label") + " when sorting by column: " + colName);
+            trainingLabelsSet.add(withId.head(k+1).apply(k).getAs[String]("rowId"));
+            trainingLabelsSet.add(bottomWithId.head(k+1).apply(k).getAs[String]("rowId"));
+            if ( withId.head(k+1).apply(k).getAs[Integer]("label").toString() != firstRowLabel || 
+              bottomWithId.head(k+1).apply(k).getAs[Integer]("label").toString() != firstRowLabel) {
+              areLabelsDifferent = true;
+              break;
+            }
+  	    }
+	    }
+	    
+	    if (areLabelsDifferent) {
 	      println("LABELS ARE DIFFERENT!!")
-	      labelsDifferent = labelsDifferent + 1;
-  	  } else {
+        labelsDifferent = labelsDifferent + 1;
+	    } else {
   	    println("LABELS ARE SAME!!!");
   	    labelsSame = labelsSame + 1;
-  	    labelsSameLabels += String.valueOf(firstRow.getAs[String]("label"));
+  	    labelsSameLabels += String.valueOf(firstRowLabel);
   	  }
       println(" ");
+//  	  val firstRow = withId.head(1).apply(0);
+//  	  val secondRow = withId.head(2).apply(1);
+//      val lastRow = withId.orderBy(desc("_id")).head(1).apply(0);
+//      val secondLastRow = withId.orderBy(desc("_id")).head(2).apply(1);
+//  	  println(firstRow.mkString(" "));
+//  	  println(secondRow.mkString(" "));
+//  	  println(lastRow.mkString(" "));
+//  	  println(secondLastRow.mkString(" "));
+//  	  println("First row label: " + firstRow.getAs[String]("label") + " when sorting by column: " + colName);
+//  	  println("Second row label: " + secondRow.getAs[String]("label") + " when sorting by column: " + colName);
+//  	  println("Last row label: " + lastRow.getAs[String]("label") + " when sorting by column: " + colName);
+//  	  println("Second Last row label: " + secondLastRow.getAs[String]("label") + " when sorting by column: " + colName);
+  	  
+//  	  trainingLabelsSet.add(firstRow.getAs[String]("rowId"));
+//  	  trainingLabelsSet.add(secondRow.getAs[String]("rowId"));
+//  	  trainingLabelsSet.add(lastRow.getAs[String]("rowId"));
+//  	  trainingLabelsSet.add(secondLastRow.getAs[String]("rowId"));
+//  	  
+//	    if (firstRow.getAs[String]("label") != lastRow.getAs[String]("label") || 
+//	        firstRow.getAs[String]("label") != secondRow.getAs[String]("label") || 
+//	        firstRow.getAs[String]("label") != secondLastRow.getAs[String]("label")) {
+//	      println("LABELS ARE DIFFERENT!!")
+//	      labelsDifferent = labelsDifferent + 1;
+//  	  } else {
+//  	    println("LABELS ARE SAME!!!");
+//  	    labelsSame = labelsSame + 1;
+//  	    labelsSameLabels += String.valueOf(firstRow.getAs[String]("label"));
+//  	  }
+//      println(" ");
 	  })
 	  
 	  println("------------------------------------------");
@@ -359,6 +397,23 @@ object Process extends App with Context {
 
 	println("Confusion matrix:")
   println(metrics.confusionMatrix);
+	
+  var labelsPositive = 0;
+  var labelsNegative = 0;
+  val labelsString = trainingLabelsSet.mkString(",");
+  val trainingLabelsInt = labelsString.split(",").map(_.toInt);
+  
+  trainingLabelsInt.foreach(row => {
+    val label = dfLabelHashMap.getOrElse(row, 9999)
+    if (label == 0) {
+      labelsNegative = labelsNegative + 1;
+    } else if (label == 1) {
+      labelsPositive = labelsPositive + 1;
+    } else {
+      println("no label found")
+    }
+  });
+
   
 	finalDf.coalesce(1).write.mode(SaveMode.Overwrite).csv(outputFileLocation);  
   val pw = new PrintWriter(new File(outputFileLocation + "/confusion-matrix.txt" ))
@@ -369,6 +424,12 @@ object Process extends App with Context {
   pw.write(metrics.confusionMatrix.toString)
   pw.write("\r\n");
   pw.write("------------------------------------------- \r\n");
+  pw.write("\r\n\n");
+  pw.write("LP: ");
+  pw.write(labelsPositive.toString());
+  pw.write("\r\n");
+  pw.write("LN: ");
+  pw.write(labelsNegative.toString());
   pw.close();
   
   val pw1 = new PrintWriter(new File(outputFileLocation + "/training-labels.txt" ));

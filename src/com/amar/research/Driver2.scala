@@ -19,16 +19,18 @@ import com.amar.research.utils.Context;
 import com.amar.research.Utils.{ getMean, getRound, getTRange, getVariance };
 import com.amar.research.Process.outputFileLocation;
 import org.apache.spark.SparkContext
+import scala.util.control.Breaks._;
 
 object Process2 extends App with Context {
 
   import sparkSession.implicits._;
   // Parameters
-  var theta = 0.1;   // 0.05
-  var minRows = 10;    // 4
-  var maxRows = 100;
-  var minCols = 1;
-  
+  val theta = 0.15;   // 0.05
+  val minRows = 5;    // 4
+  val maxRows = 100;
+  val minCols = 1;
+  val bicValidation = 0.001;
+   
   // Configuration
   val inputFileLocation = "src/resources/bank-data/output/*.csv";
   println(inputFileLocation);
@@ -56,10 +58,15 @@ object Process2 extends App with Context {
     case Row(rowNum: Int, col0: Double, col1: Double, col2: Double, col3: Double, label: Int, predicted: String) => (rowNum, predicted)
   }.collectAsMap();
   
+  var dfLabelHashMap = df.rdd.map{
+    case Row(rowNum: Int, col0: Double, col1: Double, col2: Double, col3: Double, label: Int, predicted: String) => (rowNum, label)
+  }.collectAsMap();
+  
   val mutablePredictedMap = mutable.Map(dfHashMap.toSeq: _*);
   val trainingLabels = sparkSession.sparkContext.textFile(trainingLabelsLocation).collect();
   
-	var trainingLabelsSet = mutable.Set(trainingLabels: _*);
+  val trainingLabelsInt = trainingLabels.map((label) => label.toInt);
+	var trainingLabelsSet = mutable.Set(trainingLabelsInt: _*);
 	println(trainingLabelsSet.size);
 	trainingLabelsSet.map(print);
 	
@@ -102,7 +109,11 @@ object Process2 extends App with Context {
 	        var labelsSameLabels =  mutable.ListBuffer[String]();
           //    	  colDf.show();
 	        
-	        val rowsLength = rowNums.length;
+	        val rowsLength = rowNums.size;
+      	  var topBottomRows = Math.ceil(bicValidation * rowsLength).toInt;
+      	  if (topBottomRows < 3) {
+      	    topBottomRows = 3;
+      	  }
 	        var unProcessedNum = 0;
 	        rowNums.foreach((rowNum) => {
 	          val rowPrediction = String.valueOf(mutablePredictedMap.get(rowNum).getOrElse("none"));
@@ -115,46 +126,88 @@ object Process2 extends App with Context {
             val colSortedDF = colDf.orderBy(asc(colName));
             val withId = colSortedDF.withColumn("_id", monotonically_increasing_id()).orderBy("_id");
             //    	    withId.show();
-            val firstRow = withId.head(1).apply(0);
-            val secondRow = withId.head(2).apply(1);
-            val lastRow = withId.orderBy(desc("_id")).head(1).apply(0);
-            val secondLastRow = withId.orderBy(desc("_id")).head(2).apply(1);
+            val bottomWithId = withId.orderBy(desc("_id"));
+            var k = 0;
+	          val firstRowLabel = withId.head(1).apply(0).getAs[Integer]("label").toString();
+            var areLabelsDifferent = false;
             
-            if (trainingLabelsSet.contains(firstRow.getAs[String]("rowId")) && 
-                trainingLabelsSet.contains(secondRow.getAs[String]("rowId")) &&
-                trainingLabelsSet.contains(lastRow.getAs[String]("rowId")) &&
-                trainingLabelsSet.contains(secondLastRow.getAs[String]("rowId"))) {
-               isProcessed = false;              
-            } else {
-              	if (unProcessedNum/rowsLength > 0.20) {
-      	          isProcessed = false;
-      	        }
-            }
+            breakable {
+        	    for (k <- 0 to (topBottomRows-1)) {
+                if (trainingLabelsSet.contains(withId.head(k+1).apply(k).getAs[Int]("rowId")) && 
+                  trainingLabelsSet.contains(bottomWithId.head(k+1).apply(k).getAs[Int]("rowId"))) {
+                   isProcessed = false;              
+                } else {
+                  	if (unProcessedNum/rowsLength > 0.25) {
+          	          isProcessed = false;
+          	        } else {
+          	          isProcessed = true;
+          	        }
+                  	break;
+                }
+                
+        	    }
+      	    }
+            
+            
+//            val firstRow = withId.head(1).apply(0);
+//            val secondRow = withId.head(2).apply(1);
+//            val lastRow = withId.orderBy(desc("_id")).head(1).apply(0);
+//            val secondLastRow = withId.orderBy(desc("_id")).head(2).apply(1);
+//            
+//            if (trainingLabelsSet.contains(firstRow.getAs[String]("rowId")) && 
+//                trainingLabelsSet.contains(secondRow.getAs[String]("rowId")) &&
+//                trainingLabelsSet.contains(lastRow.getAs[String]("rowId")) &&
+//                trainingLabelsSet.contains(secondLastRow.getAs[String]("rowId"))) {
+//               isProcessed = false;              
+//            } else {
+//              	if (unProcessedNum/rowsLength > 0.01) {
+//      	          isProcessed = false;
+//      	        }
+//            }
               
             if (!isProcessed) {
-          	  trainingLabelsSet.add(firstRow.getAs[String]("rowId"));
-          	  trainingLabelsSet.add(secondRow.getAs[String]("rowId"));
-          	  trainingLabelsSet.add(lastRow.getAs[String]("rowId"));
-          	  trainingLabelsSet.add(secondLastRow.getAs[String]("rowId"));
-              //      	  println(firstRow.mkString(" "));
-              //      	  println(secondRow.mkString(" "));
-              //      	  println(lastRow.mkString(" "));
-              //      	  println(secondLastRow.mkString(" "));
-              //      	  println("First row label: " + firstRow.getAs[String]("label") + " when sorting by column: " + colName);
-              //      	  println("Second row label: " + secondRow.getAs[String]("label") + " when sorting by column: " + colName);
-              //      	  println("Last row label: " + lastRow.getAs[String]("label") + " when sorting by column: " + colName);
-              //      	  println("Second Last row label: " + secondLastRow.getAs[String]("label") + " when sorting by column: " + colName);
-  
-              if (firstRow.getAs[String]("label") != lastRow.getAs[String]("label") ||
-                firstRow.getAs[String]("label") != secondRow.getAs[String]("label") ||
-                firstRow.getAs[String]("label") != secondLastRow.getAs[String]("label")) {
-                println("LABELS ARE DIFFERENT!!")
+              
+              breakable {
+          	    for (k <- 0 to (topBottomRows-1)) {
+                    println(withId.head(k+1).apply(k).mkString(" "));
+          	        println(bottomWithId.head(k+1).apply(k).mkString(" "));
+                    println("Top " + (k+1) + " row label: " + withId.head(k+1).apply(k).getAs[String]("label") + " when sorting by column: " + colName);
+                    println("Bottom " + (k+1) + " row label: " + bottomWithId.head(k+1).apply(k).getAs[String]("label") + " when sorting by column: " + colName);
+                    trainingLabelsSet.add(withId.head(k+1).apply(k).getAs[Int]("rowId"));
+                    trainingLabelsSet.add(bottomWithId.head(k+1).apply(k).getAs[Int]("rowId"));
+                    if ( withId.head(k+1).apply(k).getAs[Integer]("label").toString() != firstRowLabel || 
+                      bottomWithId.head(k+1).apply(k).getAs[Integer]("label").toString() != firstRowLabel) {
+                      areLabelsDifferent = true;
+                      break;
+                    }
+          	    }
+        	    }
+              
+              if (areLabelsDifferent) {
+        	      println("LABELS ARE DIFFERENT!!")
                 labelsDifferent = labelsDifferent + 1;
-              } else {
-                println("LABELS ARE SAME!!!");
-                labelsSame = labelsSame + 1;
-    	          labelsSameLabels += String.valueOf(firstRow.getAs[String]("label"));
-              }
+        	    } else {
+          	    println("LABELS ARE SAME!!!");
+          	    labelsSame = labelsSame + 1;
+          	    labelsSameLabels += String.valueOf(firstRowLabel);
+          	  }
+              println(" ");
+              
+//          	  trainingLabelsSet.add(firstRow.getAs[String]("rowId"));
+//          	  trainingLabelsSet.add(secondRow.getAs[String]("rowId"));
+//          	  trainingLabelsSet.add(lastRow.getAs[String]("rowId"));
+//          	  trainingLabelsSet.add(secondLastRow.getAs[String]("rowId"));
+//
+//              if (firstRow.getAs[String]("label") != lastRow.getAs[String]("label") ||
+//                firstRow.getAs[String]("label") != secondRow.getAs[String]("label") ||
+//                firstRow.getAs[String]("label") != secondLastRow.getAs[String]("label")) {
+//                println("LABELS ARE DIFFERENT!!")
+//                labelsDifferent = labelsDifferent + 1;
+//              } else {
+//                println("LABELS ARE SAME!!!");
+//                labelsSame = labelsSame + 1;
+//    	          labelsSameLabels += String.valueOf(firstRow.getAs[String]("label"));
+//              }
             }
           });
   
@@ -233,6 +286,19 @@ object Process2 extends App with Context {
   println("Confusion matrix:")
   println(metrics.confusionMatrix)
   
+  var labelsPositive = 0;
+  var labelsNegative = 0;
+  trainingLabelsSet.foreach(row => {
+    val label = dfLabelHashMap.getOrElse(row, 9999)
+    if (label == 0) {
+      labelsNegative = labelsNegative + 1;
+    } else if (label == 1) {
+      labelsPositive = labelsPositive + 1;
+    } else {
+      println("no label found")
+    }
+  });
+  
   finalDf.coalesce(1).write.mode(SaveMode.Overwrite).csv(output2FileLocation);
   val pw = new PrintWriter(new File(output2FileLocation + "/confusion-matrix.txt" ));
   pw.write(metrics.labels.map(_.toString).mkString(","))
@@ -242,6 +308,12 @@ object Process2 extends App with Context {
   pw.write(metrics.confusionMatrix.toString)
   pw.write("\r\n");
   pw.write("------------------------------------------- \r\n");
+  pw.write("\r\n\n");
+  pw.write("LP: ");
+  pw.write(labelsPositive.toString());
+  pw.write("\r\n");
+  pw.write("LN: ");
+  pw.write(labelsNegative.toString());
   pw.close();
 
   val pw1 = new PrintWriter(new File(output2FileLocation + "/training-labels.txt" ));
@@ -249,6 +321,8 @@ object Process2 extends App with Context {
   pw1.close();
   println("Done");
 
+
+  
   //-----------------------------------------------------------------------------------
 
 }

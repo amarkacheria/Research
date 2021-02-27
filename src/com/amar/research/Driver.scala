@@ -25,41 +25,41 @@ import com.amar.research.Utils.{ getMean, getRound, getTRange, getVariance};
 object Process extends App with Context {
   import sparkSession.implicits._;
   // Configuration
-  val minSupport = 25; // For Charm
-  val minSupportCol = 1; // For filtering concepts
+  val minSupport = 1000; // For Charm
+  val minSupportCol = 2; // For filtering concepts
 	val numPartitions = 1;
-	val bicValidation = 0.025; // Check 5% of rows from top and bottom for labels
-	val inputFileLocation1 = "src/resources/bank-data/bank-data-normalized-ceilinged-0to-4.csv";
-	val inputFileLocation2 = "src/resources/bank-data/bank-data-normalized-ceilinged-0to-4-transposed.csv";
+	val bicValidation = 0.01; // Check 5% of rows from top and bottom for labels
+	val inputFileLocation1 = "src/resources/skin-data/skin-orig.csv";
+//	val inputFileLocation2 = "src/resources/skin-data/bank-data-normalized-ceilinged-0to-4-transposed.csv";
 //	val inputFileLocation = "src/resources/glass-data/glass-data-normalized.csv";
-	val outputFileLocation  = inputFileLocation1.substring(0, inputFileLocation1.length()-40) + "output";
+	val outputFileLocation  = "src/resources/skin-data/output";
 // T-Range Generation for mean-ranges for glass-dataset
 //	val trange = getTRange(0.00, 80, 0.1, 0.025);
-	val trange = getTRange(0.0, 4.0, 0.9, 0.03);
+	val trange = getTRange(0.0, 255.0, 10, 1);
 
   // Read Original Data
 	val origData = sparkSession.sparkContext.textFile(inputFileLocation1);
 	origData.take(5).map(println);
 	
 	// Read Transposed Data
-	val transposedData = sparkSession.sparkContext.textFile(inputFileLocation2);
-	transposedData.take(5).map(println);
+//	val transposedData = sparkSession.sparkContext.textFile(inputFileLocation2);
+//	transposedData.take(5).map(println);
 	
 	// Transpose data in spark instead of reading from two files.
 
-//val byColumnAndRow = origData.zipWithIndex.flatMap {
-//  case (row, rowIndex) => row.split(',').dropRight(1).zipWithIndex.map {
-//    case (number, columnIndex) => columnIndex -> (rowIndex, number)
-//  }
-//}
-//// Build up the transposed matrix. Group and sort by column index first.
-//val byColumn = byColumnAndRow.groupByKey.sortByKey().values
-//// Then sort by row index.
-//val transposed = byColumn.map {
-//  indexedRow => indexedRow.toSeq.sortBy(_._1).map(_._2)
-//}
-//
-//transposed.take(5).map(println);
+val byColumnAndRow = origData.zipWithIndex.flatMap {
+  case (row, rowIndex) => row.split(',').dropRight(1).zipWithIndex.map {
+    case (number, columnIndex) => columnIndex -> (rowIndex, number)
+  }
+}
+// Build up the transposed matrix. Group and sort by column index first.
+val byColumn = byColumnAndRow.groupByKey.sortByKey().values
+// Then sort by row index.
+val transposedData = byColumn.map {
+  indexedRow => indexedRow.toSeq.sortBy(_._1).map(_._2).mkString(",")
+}
+
+transposedData.take(5).map(println);
 	
 	
 	//-----------------------------------------------------------------------------------
@@ -192,10 +192,10 @@ object Process extends App with Context {
 	validationRows.take(5).map((x) => println(x));
 
 	// Convert validation rows to DataFrame for easier manipulation
-	val fileToDf = validationRows.map{ case(x, y) => BankData.mapToDF(x, y)};
-	val origFileToDf = allRows.map{ case(x, y) => BankData.mapToDF(x, y)};
+	val fileToDf = validationRows.map{ case(x, y) => SkinData.mapToDF(x, y)};
+	val origFileToDf = allRows.map{ case(x, y) => SkinData.mapToDF(x, y)};
 	
-	val schema = BankData.getBankSchema();
+	val schema = SkinData.getSkinSchema();
 	// GlassData.getGlassSchema();
 	
 	val df = sparkSession.createDataFrame(fileToDf, org.apache.spark.sql.types.StructType(schema));
@@ -204,11 +204,11 @@ object Process extends App with Context {
 	val origDf_predicted = origDf.withColumn("predicted", lit(""));
 	
 	var predictedDfMap = origDf_predicted.rdd.map{
-    case Row(rowNum: Int, col0: Double, col1: Double, col2: Double, col3: Double, label: Int, predicted: String) => (rowNum, predicted)
+    case Row(rowNum: Int, col0: Double, col1: Double, col2: Double, label: Int, predicted: String) => (rowNum, predicted)
   }.collectAsMap();
   
   var dfLabelHashMap = origDf_predicted.rdd.map{
-    case Row(rowNum: Int, col0: Double, col1: Double, col2: Double, col3: Double, label: Int, predicted: String) => (rowNum, label)
+    case Row(rowNum: Int, col0: Double, col1: Double, col2: Double, label: Int, predicted: String) => (rowNum, label)
   }.collectAsMap();
   
   val mutablePredictedMap = mutable.Map(predictedDfMap.toSeq: _*);
@@ -337,11 +337,11 @@ object Process extends App with Context {
 //	        .otherwise(consolidated_df.col("predicted")))
 //	    })
         var new_colDf = colDf;
-        val columnNames = Seq("rowId","label","0","1","2","3")
+        val columnNames = Seq("rowId","label","0","1","2")
         new_colDf = new_colDf.select( new_colDf.columns.intersect(columnNames).map(x=>col(x)): _* );
   	    println( "saving to same csv folder - " + sameCsvCount);
         
-        new_colDf.coalesce(1).write.mode(SaveMode.Overwrite).format("csv").option("header", "true").save("src/resources/bank-data/same-csv/" + sameCsvCount);
+        new_colDf.coalesce(1).write.mode(SaveMode.Overwrite).format("csv").option("header", "true").save("src/resources/skin-data/same-csv/" + sameCsvCount);
         sameCsvCount = sameCsvCount+1;
 	  } else {
 //	    colDf = colDf.withColumn("predicted", lit("?"));
@@ -359,11 +359,11 @@ object Process extends App with Context {
 	    // potentially call the trimax algofrom here -- sys.process stringToProcess() 
 	    // https://stackoverflow.com/questions/38813810/how-to-execute-system-commands-in-scala
       var new_colDf = colDf;
-      val columnNames = Seq("rowId","label","0","1","2","3")
+      val columnNames = Seq("rowId","label","0","1","2")
       new_colDf = new_colDf.select( new_colDf.columns.intersect(columnNames).map(x=>col(x)): _* );
 	    println( "saving to csv folder - " + csvCount);
       
-      new_colDf.coalesce(1).write.mode(SaveMode.Overwrite).format("csv").option("header", "true").save("src/resources/bank-data/csv/" + csvCount);
+      new_colDf.coalesce(1).write.mode(SaveMode.Overwrite).format("csv").option("header", "true").save("src/resources/skin-data/csv/" + csvCount);
       csvCount = csvCount+1;
 	  }
 	  colDf.show();
@@ -373,12 +373,12 @@ object Process extends App with Context {
 //	consolidated_df.show(25);
 	
 	val updatedRDDMap = origDf_predicted.rdd.map{
-    case Row(rowNum: Int, col0: Double, col1: Double, col2: Double, col3: Double, label: Int, predicted: String) => {
-      Row(rowNum, col0, col1, col2, col3, label, String.valueOf(mutablePredictedMap.get(rowNum).get))
+    case Row(rowNum: Int, col0: Double, col1: Double, col2: Double, label: Int, predicted: String) => {
+      Row(rowNum, col0, col1, col2, label, String.valueOf(mutablePredictedMap.get(rowNum).get))
     }
   }
   
-  val finalDf = sparkSession.createDataFrame(updatedRDDMap, org.apache.spark.sql.types.StructType(BankData.getBankSchemaPredicted()));
+  val finalDf = sparkSession.createDataFrame(updatedRDDMap, org.apache.spark.sql.types.StructType(SkinData.getSkinSchemaPredicted()));
 
   finalDf.show();	
 	

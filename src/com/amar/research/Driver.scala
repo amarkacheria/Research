@@ -25,42 +25,39 @@ import com.amar.research.Utils.{ getMean, getRound, getTRange, getVariance};
 object Process extends App with Context {
   import sparkSession.implicits._;
   // Configuration
-  val minSupport = 25; // For Charm
+  val minSupport = 50; // For Charm
   val minSupportCol = 1; // For filtering concepts
 	val numPartitions = 1;
 	val bicValidation = 0.025; // Check 5% of rows from top and bottom for labels
-	val inputFileLocation1 = "src/resources/bank-data/bank-data-normalized-ceilinged-0to-4.csv";
-	val inputFileLocation2 = "src/resources/bank-data/bank-data-normalized-ceilinged-0to-4-transposed.csv";
-//	val inputFileLocation = "src/resources/glass-data/glass-data-normalized.csv";
-	val outputFileLocation  = inputFileLocation1.substring(0, inputFileLocation1.length()-40) + "output";
-// T-Range Generation for mean-ranges for glass-dataset
-//	val trange = getTRange(0.00, 80, 0.1, 0.025);
-	val trange = getTRange(0.0, 4.0, 0.9, 0.03);
+	val inputFileLocation1 = "src/resources/rice-data/rice-norm.csv";
+	val inputFileLocation2 = "src/resources/rice-data/rice-norm.csv";
+	val folderLocation = "src/resources/rice-data";
+	val outputFileLocation  = folderLocation + "/output";
+	val trange = getTRange(0.0, 7.0, 0.3, 0.03);
 
   // Read Original Data
 	val origData = sparkSession.sparkContext.textFile(inputFileLocation1);
 	origData.take(5).map(println);
 	
 	// Read Transposed Data
-	val transposedData = sparkSession.sparkContext.textFile(inputFileLocation2);
-	transposedData.take(5).map(println);
+  //	val transposedData = sparkSession.sparkContext.textFile(inputFileLocation2);
+  //	transposedData.take(5).map(println);
 	
 	// Transpose data in spark instead of reading from two files.
-
-//val byColumnAndRow = origData.zipWithIndex.flatMap {
-//  case (row, rowIndex) => row.split(',').dropRight(1).zipWithIndex.map {
-//    case (number, columnIndex) => columnIndex -> (rowIndex, number)
-//  }
-//}
-//// Build up the transposed matrix. Group and sort by column index first.
-//val byColumn = byColumnAndRow.groupByKey.sortByKey().values
-//// Then sort by row index.
-//val transposed = byColumn.map {
-//  indexedRow => indexedRow.toSeq.sortBy(_._1).map(_._2)
-//}
-//
-//transposed.take(5).map(println);
 	
+	val byColumnAndRow = origData.zipWithIndex.flatMap {
+    case (row, rowIndex) => row.split(',').dropRight(1).zipWithIndex.map {
+      case (number, columnIndex) => columnIndex -> (rowIndex, number)
+    }
+  }
+  // Build up the transposed matrix. Group and sort by column index first.
+  val byColumn = byColumnAndRow.groupByKey.sortByKey().values;
+  // Then sort by row index.
+  val transposedData = byColumn.map {
+    indexedRow => indexedRow.toSeq.sortBy(_._1).map(_._2).mkString(",")
+  };
+
+  transposedData.take(5).map(println);
 	
 	//-----------------------------------------------------------------------------------
 	// 1. Preprocessing
@@ -118,29 +115,7 @@ object Process extends App with Context {
 	println("after charm");
 	println(afterCharm.collect().size);
 	afterCharm.take(5).map(println);
-		println("---------------------------------------------------------------------------------------------------------------------------");
-	
-	
-//	val level1 = afterCharm.flatMap(x=>x)
-//	println("level 1");
-//	println(level1.collect().size);
-//	level1.take(5).map(println);	
-//	println("---------------------------------------------------------------------------------------------------------------------------");
-//	
-//	
-//	val level2 = level1.distinct();
-//	println("level 2");
-//	println(level2.collect().size);
-//	level2.take(5).map(println);
-//		println("---------------------------------------------------------------------------------------------------------------------------");
-//	
-//		
-//	val level3 = level2.groupByKey();
-//	println("level 3");
-//	println(level3.collect().size);
-//	level3.take(5).map(println);
-//		println("---------------------------------------------------------------------------------------------------------------------------");
-	
+	println("---------------------------------------------------------------------------------------------------------------------------");
 	
 	val groupAfterCharm = afterCharm.flatMap(x => x).distinct();
   println("group after charm");
@@ -149,21 +124,19 @@ object Process extends App with Context {
 	println("---------------------------------------------------------------------------------------------------------------------------");
 	
 	val filteredConcepts = groupAfterCharm
-	.filter( _._2.size >= minSupportCol)
-	.filter( _._1.split(" ").size >= minSupport)
+	.collect()
+	.filter( _._2.split(" ").length >= minSupportCol)
+	.filter( _._1.split(" ").length >= minSupport)
 //	.filter(_._2.head.equals("0"))
-	.sortBy(_._1.split(" ").length, true, numPartitions) // sort such that lowest number of cols comes first
-	.sortBy(_._2.size, true, numPartitions) // sort such that lowest number of rows comes first
+	.sortBy(_._1.split(" ").length)(Ordering[Int]) // sort such that lowest number of cols comes first
+	.sortBy(_._2.split(" ").length)(Ordering[Int]) // sort such that lowest number of rows comes first
 	// sorting is done in such a way to process the smallest bics first for better accuracy. 
 	// If bigger bics are processed first, they will either produce incorrect predictions or they would result in no prediction
 	
 	println("filtered concepts");
-	filteredConcepts.take(10).map(println);
+	filteredConcepts.map(println);
 	println("---------------------------------------------------------------------------------------------------------------------------");
 	
-  
-//  println("done");
-//  Thread.sleep(100000);
   // Find all rows present in the filtered concepts
 	val conceptRows: ListBuffer[Int] = new ListBuffer[Int]();
 	filteredConcepts.foreach(x => {
@@ -185,30 +158,40 @@ object Process extends App with Context {
 	  }
 	}
 	
-	val allRows = origData.zipWithIndex()
+	val allRows = origData.zipWithIndex();
 	
 	println("VALIDATION ROWS");
 	println(" ");
 	validationRows.take(5).map((x) => println(x));
 
 	// Convert validation rows to DataFrame for easier manipulation
-	val fileToDf = validationRows.map{ case(x, y) => BankData.mapToDF(x, y)};
-	val origFileToDf = allRows.map{ case(x, y) => BankData.mapToDF(x, y)};
+	val fileToDf = validationRows.map{ case(x, y) => MainData.mapToDF(x, y)};
+	val origFileToDf = allRows.map{ case(x, y) => MainData.mapToDF(x, y)};
 	
-	val schema = BankData.getBankSchema();
-	// GlassData.getGlassSchema();
+	val schema = MainData.getSchema();
 	
 	val df = sparkSession.createDataFrame(fileToDf, org.apache.spark.sql.types.StructType(schema));
 	val origDf = sparkSession.createDataFrame(origFileToDf, org.apache.spark.sql.types.StructType(schema));
 	
 	val origDf_predicted = origDf.withColumn("predicted", lit(""));
 	
-	var predictedDfMap = origDf_predicted.rdd.map{
-    case Row(rowNum: Int, col0: Double, col1: Double, col2: Double, col3: Double, label: Int, predicted: String) => (rowNum, predicted)
+//	var predictedDfMap = origDf_predicted.rdd.map{
+//    case Row(rowNum: Int, col0: Double, col1: Double, col2: Double, col3: Double,
+//        col4: Double, col5: Double, col6: Double,
+//        col7: Double, col8: Double, col9: Double,
+//        col10: Double, col11: Double, col12: Double,
+//        col13: Double, col14: Double, col15: Double,
+//        label: Int, predicted: String) => (rowNum, predicted)
+//  }.collectAsMap();
+  
+  var predictedDFSubset = origDf_predicted.select("rowId", "predicted");
+  var predictedDfMap = predictedDFSubset.rdd.map{
+    case Row(rowId: Int, predicted: String) => (rowId, predicted)
   }.collectAsMap();
   
-  var dfLabelHashMap = origDf_predicted.rdd.map{
-    case Row(rowNum: Int, col0: Double, col1: Double, col2: Double, col3: Double, label: Int, predicted: String) => (rowNum, label)
+  var dfLabelSubset = origDf_predicted.select("rowId", "label");
+  var dfLabelHashMap = dfLabelSubset.rdd.map{
+    case Row(rowId: Int, label: Int) => (rowId, label)
   }.collectAsMap();
   
   val mutablePredictedMap = mutable.Map(predictedDfMap.toSeq: _*);
@@ -216,9 +199,15 @@ object Process extends App with Context {
   
 	var csvCount = 1;
 	var sameCsvCount = 1;
-	filteredConcepts.collect().foreach(x => {
+	var count = 0;
+	
+//	val FCDF = mutable.Map[Int, Dataset[Row]]();
+	filteredConcepts.foreach(x => {
 	  println(" ");
 	  println("xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx");
+	  count = count + 1;
+	  println(count + "/" + filteredConcepts.size);
+	  
 	  val rowNums = x._1.split(" ").map(_.toInt).toSeq;
 	  val colNamesStr = "rowId " + x._2 + " label";
 	  val colNames = colNamesStr.split(" ");
@@ -227,7 +216,6 @@ object Process extends App with Context {
 	  val rowsDf = df.where(col("rowId").isin(rowNums:_*));	  
 	  // Keep only columns which are part of this bicluster in the DF, rowId, and label
 	  var colDf = rowsDf.select(colNames.head, colNames.tail:_*);
-	  
 	  var labelsSame = 0;
 	  var labelsDifferent = 0;
 	  var labelsSameLabels =  mutable.ListBuffer[String]();
@@ -242,6 +230,7 @@ object Process extends App with Context {
 	  // Keep track of how many cols result in same label vs different label
 	  // If labelsSame >= labelsDifferent, then predict all rows to have same label
 	  // Else predict as "?" and devise strategy to split the bicluster (for instance entropy based split)
+	  colDf.show();
 	  bicCols.foreach(colName => {
 	    val colSortedDF = colDf.orderBy(asc(colName));
 	    val withId = colSortedDF.withColumn("_id", monotonically_increasing_id()).orderBy("_id");
@@ -274,35 +263,6 @@ object Process extends App with Context {
   	    labelsSameLabels += String.valueOf(firstRowLabel);
   	  }
       println(" ");
-//  	  val firstRow = withId.head(1).apply(0);
-//  	  val secondRow = withId.head(2).apply(1);
-//      val lastRow = withId.orderBy(desc("_id")).head(1).apply(0);
-//      val secondLastRow = withId.orderBy(desc("_id")).head(2).apply(1);
-//  	  println(firstRow.mkString(" "));
-//  	  println(secondRow.mkString(" "));
-//  	  println(lastRow.mkString(" "));
-//  	  println(secondLastRow.mkString(" "));
-//  	  println("First row label: " + firstRow.getAs[String]("label") + " when sorting by column: " + colName);
-//  	  println("Second row label: " + secondRow.getAs[String]("label") + " when sorting by column: " + colName);
-//  	  println("Last row label: " + lastRow.getAs[String]("label") + " when sorting by column: " + colName);
-//  	  println("Second Last row label: " + secondLastRow.getAs[String]("label") + " when sorting by column: " + colName);
-  	  
-//  	  trainingLabelsSet.add(firstRow.getAs[String]("rowId"));
-//  	  trainingLabelsSet.add(secondRow.getAs[String]("rowId"));
-//  	  trainingLabelsSet.add(lastRow.getAs[String]("rowId"));
-//  	  trainingLabelsSet.add(secondLastRow.getAs[String]("rowId"));
-//  	  
-//	    if (firstRow.getAs[String]("label") != lastRow.getAs[String]("label") || 
-//	        firstRow.getAs[String]("label") != secondRow.getAs[String]("label") || 
-//	        firstRow.getAs[String]("label") != secondLastRow.getAs[String]("label")) {
-//	      println("LABELS ARE DIFFERENT!!")
-//	      labelsDifferent = labelsDifferent + 1;
-//  	  } else {
-//  	    println("LABELS ARE SAME!!!");
-//  	    labelsSame = labelsSame + 1;
-//  	    labelsSameLabels += String.valueOf(firstRow.getAs[String]("label"));
-//  	  }
-//      println(" ");
 	  })
 	  
 	  println("------------------------------------------");
@@ -337,11 +297,11 @@ object Process extends App with Context {
 //	        .otherwise(consolidated_df.col("predicted")))
 //	    })
         var new_colDf = colDf;
-        val columnNames = Seq("rowId","label","0","1","2","3")
+        val columnNames = MainData.columnNames;
         new_colDf = new_colDf.select( new_colDf.columns.intersect(columnNames).map(x=>col(x)): _* );
   	    println( "saving to same csv folder - " + sameCsvCount);
         
-        new_colDf.coalesce(1).write.mode(SaveMode.Overwrite).format("csv").option("header", "true").save("src/resources/bank-data/same-csv/" + sameCsvCount);
+        new_colDf.coalesce(1).write.mode(SaveMode.Overwrite).format("csv").option("header", "true").save(folderLocation + "/same-csv/" + sameCsvCount);
         sameCsvCount = sameCsvCount+1;
 	  } else {
 //	    colDf = colDf.withColumn("predicted", lit("?"));
@@ -359,11 +319,11 @@ object Process extends App with Context {
 	    // potentially call the trimax algofrom here -- sys.process stringToProcess() 
 	    // https://stackoverflow.com/questions/38813810/how-to-execute-system-commands-in-scala
       var new_colDf = colDf;
-      val columnNames = Seq("rowId","label","0","1","2","3")
+      val columnNames = MainData.columnNames;
       new_colDf = new_colDf.select( new_colDf.columns.intersect(columnNames).map(x=>col(x)): _* );
 	    println( "saving to csv folder - " + csvCount);
       
-      new_colDf.coalesce(1).write.mode(SaveMode.Overwrite).format("csv").option("header", "true").save("src/resources/bank-data/csv/" + csvCount);
+      new_colDf.coalesce(1).write.mode(SaveMode.Overwrite).format("csv").option("header", "true").save(folderLocation + "/csv/" + csvCount);
       csvCount = csvCount+1;
 	  }
 	  colDf.show();
@@ -372,13 +332,14 @@ object Process extends App with Context {
 
 //	consolidated_df.show(25);
 	
-	val updatedRDDMap = origDf_predicted.rdd.map{
-    case Row(rowNum: Int, col0: Double, col1: Double, col2: Double, col3: Double, label: Int, predicted: String) => {
-      Row(rowNum, col0, col1, col2, col3, label, String.valueOf(mutablePredictedMap.get(rowNum).get))
+	val updatedRDDSubset = origDf_predicted.select("rowId", "label");
+	val updatedRDDMap = updatedRDDSubset.rdd.map{
+    case Row(rowId: Int, label: Int) => {
+      Row(rowId, label, String.valueOf(mutablePredictedMap.get(rowId).get))
     }
   }
   
-  val finalDf = sparkSession.createDataFrame(updatedRDDMap, org.apache.spark.sql.types.StructType(BankData.getBankSchemaPredicted()));
+  val finalDf = sparkSession.createDataFrame(updatedRDDMap, org.apache.spark.sql.types.StructType(MainData.getSchemaPredicted()));
 
   finalDf.show();	
 	
@@ -468,7 +429,7 @@ object Process extends App with Context {
   });
 //	finalConcepts.map(println);
 	// save finalConcepts to file
-	finalConcepts.coalesce(1).saveAsTextFile(outputFileLocation + "/concepts/");
+	sparkSession.sparkContext.parallelize(finalConcepts).saveAsTextFile(outputFileLocation + "/concepts/");
 	
 	println("---------------------------------------------------------------------------------------------------------------------------");
 	println("Thread is now sleeping...");

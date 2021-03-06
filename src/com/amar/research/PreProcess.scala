@@ -15,7 +15,7 @@ object PreProcess {
 
 			for (index <- 0 to length - 2) {
 				if (index + 2 < length) {
-					val triplets: Seq[String] = Seq(lineArray(index), lineArray(index + 1), lineArray(index + 2));
+				val triplets: Seq[String] = Seq(lineArray(index), lineArray(index + 1), lineArray(index + 2));
 				val values: Seq[Double] = triplets.map(x => x.split('$')(0).toDouble);
 				val cols: Seq[String] = triplets.map(x => x.split('$')(1));
 

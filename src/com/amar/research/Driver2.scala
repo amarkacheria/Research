@@ -41,8 +41,8 @@ object Process2 extends App with Context {
   val predictedData = sparkSession.sparkContext.textFile(inputFileLocation);
 
   // Convert predicted rows to DataFrame for easier manipulation
-  val fileToDf = predictedData.map { case (x) => BankData.mapToDFPredicted(x) };
-  val schema = BankData.getBankSchemaPredicted();
+  val fileToDf = predictedData.map { case (x) => MainData.mapToDFPredicted(x) };
+  val schema = MainData.getSchemaPredicted();
   var df = sparkSession.createDataFrame(fileToDf, org.apache.spark.sql.types.StructType(schema));
 
   // For some reason, reading empty strings (added in driver1) is a bit weird
@@ -55,11 +55,11 @@ object Process2 extends App with Context {
       .otherwise(df.col("predicted")));
   
   var dfHashMap = df.rdd.map{
-    case Row(rowNum: Int, col0: Double, col1: Double, col2: Double, col3: Double, label: Int, predicted: String) => (rowNum, predicted)
+    case Row(rowNum: Int, label: Int, predicted: String) => (rowNum, predicted)
   }.collectAsMap();
   
   var dfLabelHashMap = df.rdd.map{
-    case Row(rowNum: Int, col0: Double, col1: Double, col2: Double, col3: Double, label: Int, predicted: String) => (rowNum, label)
+    case Row(rowNum: Int, label: Int, predicted: String) => (rowNum, label)
   }.collectAsMap();
   
   val mutablePredictedMap = mutable.Map(dfHashMap.toSeq: _*);
@@ -258,14 +258,14 @@ object Process2 extends App with Context {
   }
   
   val updatedRDDMap = df.rdd.map{
-    case Row(rowNum: Int, col0: Double, col1: Double, col2: Double, col3: Double, label: Int, predicted: String) => {
-      Row(rowNum, col0, col1, col2, col3, label, String.valueOf(mutablePredictedMap.get(rowNum).get))
+    case Row(rowNum: Int, label: Int, predicted: String) => {
+      Row(rowNum, label, String.valueOf(mutablePredictedMap.get(rowNum).get))
     }
   }
   
   println("updatedRDDMap done");
   
-  val finalDf = sparkSession.createDataFrame(updatedRDDMap, org.apache.spark.sql.types.StructType(BankData.getBankSchemaPredicted()));
+  val finalDf = sparkSession.createDataFrame(updatedRDDMap, org.apache.spark.sql.types.StructType(MainData.getSchemaPredicted()));
 
   finalDf.show();
   
@@ -277,14 +277,14 @@ object Process2 extends App with Context {
     val doublePrediction = prediction.toDouble;
 
     (doublePrediction, row(0).asInstanceOf[Int].toDouble)
-  }).rdd
+  }).rdd;
   
   // represents "?" and "" (empty string) which are not there in dataset but predictions may contain those characters. 
   val additionalLabels: RDD[(Double, Double)] = sparkSession.sparkContext.parallelize(Seq((99.0, 99.0), (100.0, 100.0)));
 	  
   val metrics = new MulticlassMetrics(predictionAndLabels.++(additionalLabels));
-  println("Confusion matrix:")
-  println(metrics.confusionMatrix)
+  println("Confusion matrix:");
+  println(metrics.confusionMatrix);
   
   var labelsPositive = 0;
   var labelsNegative = 0;
@@ -301,11 +301,11 @@ object Process2 extends App with Context {
   
   finalDf.coalesce(1).write.mode(SaveMode.Overwrite).csv(output2FileLocation);
   val pw = new PrintWriter(new File(output2FileLocation + "/confusion-matrix.txt" ));
-  pw.write(metrics.labels.map(_.toString).mkString(","))
+  pw.write(metrics.labels.map(_.toString).mkString(","));
   pw.write("\r\n");
   pw.write("\r\n");
   pw.write("------------------------------------------- \r\n");
-  pw.write(metrics.confusionMatrix.toString)
+  pw.write(metrics.confusionMatrix.toString);
   pw.write("\r\n");
   pw.write("------------------------------------------- \r\n");
   pw.write("\r\n\n");

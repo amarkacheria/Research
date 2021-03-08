@@ -25,17 +25,18 @@ object Process2 extends App with Context {
 
   import sparkSession.implicits._;
   // Parameters
-  val theta = 0.15;   // 0.05
-  val minRows = 5;    // 4
+  val theta = 0.01;   // 0.05
+  val minRows = 3;    // 4
   val maxRows = 100;
   val minCols = 1;
   val bicValidation = 0.001;
+  val lastFile = 226;
    
   // Configuration
-  val inputFileLocation = "src/resources/bank-data/output/*.csv";
+  val inputFileLocation = "src/resources/rice-data/output/*.csv";
   println(inputFileLocation);
-  val output2FileLocation = "src/resources/bank-data/output/trimax";
-  val trainingLabelsLocation = "src/resources/bank-data/output/training-labels.txt";
+  val output2FileLocation = "src/resources/rice-data/output/trimax";
+  val trainingLabelsLocation = "src/resources/rice-data/output/training-labels.txt";
 
   // Read Data
   val predictedData = sparkSession.sparkContext.textFile(inputFileLocation);
@@ -62,12 +63,12 @@ object Process2 extends App with Context {
     case Row(rowNum: Int, label: Int, predicted: String) => (rowNum, label)
   }.collectAsMap();
   
-  val mutablePredictedMap = mutable.Map(dfHashMap.toSeq: _*);
+  val mutablePredictedMap = mutable.ListMap(dfHashMap.toSeq: _*);
   val trainingLabels = sparkSession.sparkContext.textFile(trainingLabelsLocation).collect();
   
   val trainingLabelsInt = trainingLabels.map((label) => label.toInt);
 	var trainingLabelsSet = mutable.Set(trainingLabelsInt: _*);
-	println(trainingLabelsSet.size);
+//	println(trainingLabelsSet.size);
 	trainingLabelsSet.map(print);
 	
   // runs command fine
@@ -75,187 +76,161 @@ object Process2 extends App with Context {
   //  var errorFound = false;
   var fileCounter = 1;
   var minColsCounter = 3;
+  val trimaxDF = mutable.ListMap[String, String]();
   while (minColsCounter >= minCols) {
-    try {
 //      if (minColsCounter == 1) {
 //        minRows = 15;
 //      }
-      println("File: " + fileCounter);
-      val proc = stringToProcess("cmd /C trimax ./src/resources/bank-data/csv/" + fileCounter + "/*.csv " + theta + " " + minRows + " " + minColsCounter + " " + maxRows + " " + minColsCounter);
-      // check the top bottom labels
-      val result = proc.!!;
-      println(result);
-      if (result.trim().length() > 0) {
-        val origLines = result.split("\n");
-//        val distLines = sparkSession.sparkContext.parallelize(lines, 25);
-//        println(distLines.count());
-        val lines = origLines.sortBy((line) => {
-          line.split(" -----").apply(0).split(" ").length
-        })(Ordering.Int.reverse)
-        lines.foreach((line) => {
-          println(line);
-          val rowNums = line.split(" -----").apply(0).split(" ").map(_.toInt).toSeq;
-          var colNamesStr = "rowId " + line.split(" -----").apply(1) + "label predicted";
-          colNamesStr = colNamesStr.split('\n').map(_.trim.filter(_ >= ' ')).mkString;
-          val colNames = colNamesStr.split(" ");
-
-          val bicCols = colNames.drop(1).dropRight(1).dropRight(1);
-          // Create new DF with rows from this bicluster
-          val rowsDf = df.where($"rowId" isin (rowNums: _*));
-          // Keep only columns which are part of this bicluster in the DF, rowId, and label
-          val colDf = rowsDf.select(colNames.head, colNames.tail: _*);
-          var labelsDifferent = 0;
-          var labelsSame = 0;
-	        var labelsSameLabels =  mutable.ListBuffer[String]();
-          //    	  colDf.show();
-	        
-	        val rowsLength = rowNums.size;
-      	  var topBottomRows = Math.ceil(bicValidation * rowsLength).toInt;
-      	  if (topBottomRows < 3) {
-      	    topBottomRows = 3;
-      	  }
-	        var unProcessedNum = 0;
-	        rowNums.foreach((rowNum) => {
-	          val rowPrediction = String.valueOf(mutablePredictedMap.get(rowNum).getOrElse("none"));
-	          if (rowPrediction == "" || rowPrediction == "?" || rowPrediction == "none") {
-	            unProcessedNum = unProcessedNum + 1;
-	          }
-	        });
-	        var isProcessed = true;
-          bicCols.foreach(colName => {
-            val colSortedDF = colDf.orderBy(asc(colName));
-            val withId = colSortedDF.withColumn("_id", monotonically_increasing_id()).orderBy("_id");
-            //    	    withId.show();
-            val bottomWithId = withId.orderBy(desc("_id"));
-            var k = 0;
-	          val firstRowLabel = withId.head(1).apply(0).getAs[Integer]("label").toString();
-            var areLabelsDifferent = false;
-            
-            breakable {
-        	    for (k <- 0 to (topBottomRows-1)) {
-                if (trainingLabelsSet.contains(withId.head(k+1).apply(k).getAs[Int]("rowId")) && 
-                  trainingLabelsSet.contains(bottomWithId.head(k+1).apply(k).getAs[Int]("rowId"))) {
-                   isProcessed = false;              
-                } else {
-                  	if (unProcessedNum/rowsLength > 0.25) {
-          	          isProcessed = false;
-          	        } else {
-          	          isProcessed = true;
-          	        }
-                  	break;
-                }
-                
-        	    }
-      	    }
-            
-            
-//            val firstRow = withId.head(1).apply(0);
-//            val secondRow = withId.head(2).apply(1);
-//            val lastRow = withId.orderBy(desc("_id")).head(1).apply(0);
-//            val secondLastRow = withId.orderBy(desc("_id")).head(2).apply(1);
-//            
-//            if (trainingLabelsSet.contains(firstRow.getAs[String]("rowId")) && 
-//                trainingLabelsSet.contains(secondRow.getAs[String]("rowId")) &&
-//                trainingLabelsSet.contains(lastRow.getAs[String]("rowId")) &&
-//                trainingLabelsSet.contains(secondLastRow.getAs[String]("rowId"))) {
-//               isProcessed = false;              
-//            } else {
-//              	if (unProcessedNum/rowsLength > 0.01) {
-//      	          isProcessed = false;
-//      	        }
-//            }
-              
-            if (!isProcessed) {
-              
-              breakable {
-          	    for (k <- 0 to (topBottomRows-1)) {
-                    println(withId.head(k+1).apply(k).mkString(" "));
-          	        println(bottomWithId.head(k+1).apply(k).mkString(" "));
-                    println("Top " + (k+1) + " row label: " + withId.head(k+1).apply(k).getAs[String]("label") + " when sorting by column: " + colName);
-                    println("Bottom " + (k+1) + " row label: " + bottomWithId.head(k+1).apply(k).getAs[String]("label") + " when sorting by column: " + colName);
-                    trainingLabelsSet.add(withId.head(k+1).apply(k).getAs[Int]("rowId"));
-                    trainingLabelsSet.add(bottomWithId.head(k+1).apply(k).getAs[Int]("rowId"));
-                    if ( withId.head(k+1).apply(k).getAs[Integer]("label").toString() != firstRowLabel || 
-                      bottomWithId.head(k+1).apply(k).getAs[Integer]("label").toString() != firstRowLabel) {
-                      areLabelsDifferent = true;
-                      break;
-                    }
-          	    }
-        	    }
-              
-              if (areLabelsDifferent) {
-        	      println("LABELS ARE DIFFERENT!!")
-                labelsDifferent = labelsDifferent + 1;
-        	    } else {
-          	    println("LABELS ARE SAME!!!");
-          	    labelsSame = labelsSame + 1;
-          	    labelsSameLabels += String.valueOf(firstRowLabel);
-          	  }
-              println(" ");
-              
-//          	  trainingLabelsSet.add(firstRow.getAs[String]("rowId"));
-//          	  trainingLabelsSet.add(secondRow.getAs[String]("rowId"));
-//          	  trainingLabelsSet.add(lastRow.getAs[String]("rowId"));
-//          	  trainingLabelsSet.add(secondLastRow.getAs[String]("rowId"));
-//
-//              if (firstRow.getAs[String]("label") != lastRow.getAs[String]("label") ||
-//                firstRow.getAs[String]("label") != secondRow.getAs[String]("label") ||
-//                firstRow.getAs[String]("label") != secondLastRow.getAs[String]("label")) {
-//                println("LABELS ARE DIFFERENT!!")
-//                labelsDifferent = labelsDifferent + 1;
-//              } else {
-//                println("LABELS ARE SAME!!!");
-//                labelsSame = labelsSame + 1;
-//    	          labelsSameLabels += String.valueOf(firstRow.getAs[String]("label"));
-//              }
+//      println("File: " + fileCounter);
+      val file: File = new File("src/resources/rice-data/csv/" + fileCounter);
+      println("File: " + fileCounter + " exists: " + file.exists());
+      if (file.exists()) {
+        val proc = stringToProcess("cmd /C trimax ./src/resources/rice-data/csv/" + fileCounter + "/*.csv " + theta + " " + minRows + " " + minColsCounter + " " + maxRows + " " + minColsCounter);
+        // check the top bottom labels
+        val result = proc.!!;
+        if (result.trim().length() > 0) {
+          var bicString ="";
+          var labelRow = "";
+          val bicData = sparkSession.sparkContext.textFile("src/resources/rice-data/csv/" + fileCounter + "/*.csv").collect().zipWithIndex.map((s) => {
+//            println(s._1);
+            if (s._2 != 0) {
+              bicString = bicString + s._1.toString() + "#";
+            } else {
+              labelRow = s._1.toString()
             }
           });
-  
-          if (!isProcessed) {
-            println("Labels Same: " + labelsSame + "    Labels Different: " + labelsDifferent);
-            println(" ");
-            
-            var allLabelsSame = false;
-        	  if (labelsSameLabels.toList.exists(_ != labelsSameLabels.toList.head)) {
-        	    allLabelsSame = false;
-        	  } else {
-        	    allLabelsSame = true;
-        	  }
-            if (labelsSame > labelsDifferent && allLabelsSame) {
-  //              df = df.withColumn(
-  //                "predicted",
-  //                when(($"rowId" isin (rowNums: _*)) && ($"predicted"===lit("?")),
-  //                  lit(colDf.head().getAs[String]("label")))
-  //                  .otherwise(df.col("predicted")));
-  //              df.unpersist();
-  //              df.cache();
-              
-              rowNums.foreach(rowId => {
-                  mutablePredictedMap.update(rowId, colDf.head().getAs[String]("label"));
-              });
-              
-            }
-          } else {
-            println("Rows Already Processed");
-          }
-        });
+          trimaxDF.update(fileCounter + "-" + labelRow + "-" + bicString, result);
+        }
       }
       fileCounter = fileCounter + 1;
-      System.gc(); 
-    } catch {
-      case runtimeException: RuntimeException => {
-        //        errorFound = true;
-        println("RunTimeException for file: " + fileCounter);
-        runtimeException.printStackTrace();
+      if (fileCounter > lastFile) {
         minColsCounter = minColsCounter - 1;
         fileCounter = 1;
         println("reducing minCols to : " + minColsCounter);
       }
-      case e: Exception => {
-        e.printStackTrace();
-      }
-    }
   }
+  
+  val parallelTrimaxDF = sparkSession.sparkContext.parallelize(trimaxDF.toSeq);
+  
+  val predictedResultsRDD = parallelTrimaxDF.map((result) => {
+    
+    val origLines = result._2.split("\n");
+    val fileCount = result._1.split("-")(0);
+    val labelsRow = result._1.split("-")(1);
+    val bicString = result._1.split("-")(2);
+    val lines = origLines.sortBy((line) => {
+      line.split(" -----").apply(0).split(" ").length
+    })(Ordering.Int.reverse)
+    
+//    val finalResults: Array[((String, String), String)] = new Array(lines.size);
+    
+    val firstResults = lines.map((line) => {
+      
+  	  val data = bicString.split("#").map(y => {
+  	    
+  	    val size = y.split(",").size;
+  	    y.split(",").zipWithIndex.map(s => {
+  	       s._1.toDouble
+  	    })
+  	  });
+
+  	  var bicResults = new Tuple2("","");
+	    var labelsUsed = "";
+	    
+      val rowNums = line.split(" -----").apply(0).split(" ").map(_.toInt).toSeq;
+      val rowsSize = rowNums.size;
+      val colNames = labelsRow.split(",");
+      val colsSize = colNames.size;
+
+      val bicCols = line.split(" -----").apply(1);
+      // Create new DF with rows from this bicluster
+      
+      var labelsDifferent = 0;
+      var labelsSame = 0;
+      var labelsSameLabels =  mutable.ListBuffer[String]();
+      
+      val rowsLength = rowNums.size;
+  	  var topBottomRows = Math.ceil(bicValidation * rowsLength).toInt;
+  	  if (topBottomRows < 3) {
+  	    topBottomRows = 3;
+  	  }
+
+      // start from here and replicate like Driver.scala
+      bicCols.zipWithIndex.foreach(col => {
+        val colName = col._1;
+        val idx = col._2;
+        val colSorted = data.sortWith(_(idx+1) < _(idx+1));
+        val firstRowLabel = colSorted(0)(colsSize-1).toInt;
+        var areLabelsDifferent = false;
+          
+        breakable {
+    	    for (k <- 0 to (topBottomRows-1)) {
+//                println(withId.head(k+1).apply(k).mkString(" "));
+//      	        println(bottomWithId.head(k+1).apply(k).mkString(" "));
+//                println("Top " + (k+1) + " row label: " + withId.head(k+1).apply(k).getAs[String]("label") + " when sorting by column: " + colName);
+//                println("Bottom " + (k+1) + " row label: " + bottomWithId.head(k+1).apply(k).getAs[String]("label") + " when sorting by column: " + colName);
+              
+//      	        trainingLabelsSet.add(withId.head(k+1).apply(k).getAs[Int]("rowId"));
+//                trainingLabelsSet.add(bottomWithId.head(k+1).apply(k).getAs[Int]("rowId"));
+            labelsUsed= labelsUsed + colSorted(k)(0).toInt.toString() + " ";
+            labelsUsed = labelsUsed + colSorted(rowsSize-1-k)(0).toInt.toString() + " ";
+    	      
+            if (colSorted(k)(colsSize-1).toInt != firstRowLabel || 
+              colSorted(rowsSize-1-k)(colsSize-1).toInt != firstRowLabel) {
+              areLabelsDifferent = true;
+              break;
+            }
+    	    }
+  	    }
+          
+        if (areLabelsDifferent) {
+  	      println("LABELS ARE DIFFERENT!!")
+          labelsDifferent = labelsDifferent + 1;
+  	    } else {
+    	    println("LABELS ARE SAME!!!");
+    	    labelsSame = labelsSame + 1;
+    	    labelsSameLabels += String.valueOf(firstRowLabel);
+    	  }
+        println(" ");
+      });
+
+      println("Labels Same: " + labelsSame + "    Labels Different: " + labelsDifferent);
+      println(" ");
+      
+      var allLabelsSame = false;
+  	  if (labelsSameLabels.toList.exists(_ != labelsSameLabels.toList.head)) {
+  	    allLabelsSame = false;
+  	  } else {
+  	    allLabelsSame = true;
+  	  }
+      if (labelsSame > labelsDifferent && allLabelsSame) {
+         bicResults = (line.split(" -----").apply(0), labelsSameLabels.toList.head);
+        
+      }
+      (bicResults, labelsUsed)
+    });
+    
+    val finalResults = firstResults.filter(_._1._1.trim().size > 0);
+    finalResults
+    
+  })
+  
+  
+  val predictedResultsCombined = predictedResultsRDD.collect().flatten.foreach( y => {
+    println(y._1._1.trim());
+    y._1._1.trim().split(" ").filter(_.size > 0).map(_.toInt).toSeq.foreach(rowId => {
+      val priorVal = mutablePredictedMap.getOrElse(rowId, "");
+      if (priorVal != "0" && priorVal != "1" && y._1._2 != priorVal && priorVal != "") {
+        println("updating: " + rowId.toString() + " new val: " + y._1._2 + " prior: " + priorVal);
+        mutablePredictedMap.update(rowId, y._1._2);
+      }
+	  });
+	  
+	  y._2.trim().split(" ").foreach(labelUsed => {
+	    trainingLabelsSet.add(labelUsed.toInt);
+	  });
+  })
+        
   
   val updatedRDDMap = df.rdd.map{
     case Row(rowNum: Int, label: Int, predicted: String) => {

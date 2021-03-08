@@ -17,6 +17,8 @@ import scala.sys.process.stringToProcess;
 import org.apache.spark.rdd.RDD;
 import java.io._;
 import scala.util.control.Breaks._;
+import org.apache.spark.SparkContext._;
+
 
 
 import com.amar.research.utils.Context;
@@ -33,7 +35,7 @@ object Process extends App with Context {
 	val inputFileLocation2 = "src/resources/rice-data/rice-norm.csv";
 	val folderLocation = "src/resources/rice-data";
 	val outputFileLocation  = folderLocation + "/output";
-	val trange = getTRange(0.0, 7.0, 0.3, 0.03);
+	val trange = getTRange(0.0, 7.0, 0.25, 0.05);
 
   // Read Original Data
 	val origData = sparkSession.sparkContext.textFile(inputFileLocation1);
@@ -123,23 +125,27 @@ object Process extends App with Context {
 	groupAfterCharm.take(10).map(println);
 	println("---------------------------------------------------------------------------------------------------------------------------");
 	
-	val filteredConcepts = groupAfterCharm
-	.collect()
+	val conceptRows: ListBuffer[Int] = new ListBuffer[Int]();
+	
+	val filteredConcepts: RDD[(String,String)] = groupAfterCharm
+//	.collect()
 	.filter( _._2.split(" ").length >= minSupportCol)
 	.filter( _._1.split(" ").length >= minSupport)
 //	.filter(_._2.head.equals("0"))
-	.sortBy(_._1.split(" ").length)(Ordering[Int]) // sort such that lowest number of cols comes first
-	.sortBy(_._2.split(" ").length)(Ordering[Int]) // sort such that lowest number of rows comes first
+//	.sortBy(_._2.split(" ").length)(Ordering[Int]) // sort such that lowest number of cols comes first
+//	.sortBy(_._1.split(" ").length)(Ordering[Int].reverse) // sort such that highest number of rows comes first
 	// sorting is done in such a way to process the smallest bics first for better accuracy. 
 	// If bigger bics are processed first, they will either produce incorrect predictions or they would result in no prediction
+	
 	
 	println("filtered concepts");
 	filteredConcepts.map(println);
 	println("---------------------------------------------------------------------------------------------------------------------------");
 	
   // Find all rows present in the filtered concepts
-	val conceptRows: ListBuffer[Int] = new ListBuffer[Int]();
-	filteredConcepts.foreach(x => {
+	
+	
+	filteredConcepts.collect().foreach(x => {
 	  x._1.split(" ").map(rowStr => {
 	    conceptRows+=(rowStr.toInt)
 	  });
@@ -174,15 +180,6 @@ object Process extends App with Context {
 	val origDf = sparkSession.createDataFrame(origFileToDf, org.apache.spark.sql.types.StructType(schema));
 	
 	val origDf_predicted = origDf.withColumn("predicted", lit(""));
-	
-//	var predictedDfMap = origDf_predicted.rdd.map{
-//    case Row(rowNum: Int, col0: Double, col1: Double, col2: Double, col3: Double,
-//        col4: Double, col5: Double, col6: Double,
-//        col7: Double, col8: Double, col9: Double,
-//        col10: Double, col11: Double, col12: Double,
-//        col13: Double, col14: Double, col15: Double,
-//        label: Int, predicted: String) => (rowNum, predicted)
-//  }.collectAsMap();
   
   var predictedDFSubset = origDf_predicted.select("rowId", "predicted");
   var predictedDfMap = predictedDFSubset.rdd.map{
@@ -194,28 +191,115 @@ object Process extends App with Context {
     case Row(rowId: Int, label: Int) => (rowId, label)
   }.collectAsMap();
   
-  val mutablePredictedMap = mutable.Map(predictedDfMap.toSeq: _*);
+  val mutablePredictedMap = mutable.ListMap(predictedDfMap.toSeq: _*);
 	var trainingLabelsSet = mutable.Set[String]();
   
-	var csvCount = 1;
-	var sameCsvCount = 1;
+//	var csvCount = 1;
+//	var sameCsvCount = 1;
 	var count = 0;
 	
-//	val FCDF = mutable.Map[Int, Dataset[Row]]();
-	filteredConcepts.foreach(x => {
+	val FCDF = mutable.ListMap[String, String]();
+	val collectedConcepts = filteredConcepts.collect()
+	  .sortWith(_._2.split(" ").length < _._2.split(" ").length) // Smaller cols first
+	  .sortWith(_._1.split(" ").length > _._1.split(" ").length) // Larger rows first
+	  // less rows and more cols should be the best clusters and should be processed last so they overwrite previous predictions
+	
+	
+	  
+	val predictedResultsRDD = collectedConcepts.zipWithIndex.foreach(x => {
 	  println(" ");
 	  println("xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx");
 	  count = count + 1;
-	  println(count + "/" + filteredConcepts.size);
-	  
-	  val rowNums = x._1.split(" ").map(_.toInt).toSeq;
-	  val colNamesStr = "rowId " + x._2 + " label";
-	  val colNames = colNamesStr.split(" ");
+	  println(count + "/" + collectedConcepts.size);
+	  val index = x._2;
+	  val fc_rows = x._1._1;
+	  val fc_cols = x._1._2;
+	  val rowNums = x._1._1.split(" ");
+	  val colNamesStr = "rowId " + x._1._2 + " label";
+	  val colNames = colNamesStr.split(" "); 
+	  val colsSize = x._1._2.split(" ").size;
 	  val bicCols = colNames.drop(1).dropRight(1);
 	  // Create new DF with rows from this bicluster
-	  val rowsDf = df.where(col("rowId").isin(rowNums:_*));	  
-	  // Keep only columns which are part of this bicluster in the DF, rowId, and label
-	  var colDf = rowsDf.select(colNames.head, colNames.tail:_*);
+	  println(rowNums.mkString(" "));
+	  val colDf = df.filter("rowId IN (" + rowNums.mkString(",") + ")").select(colNames.head, colNames.tail:_*).rdd.collect();
+	  
+	  println("rowsDf: " + colDf.size);
+	  var df_string = "";
+	  var rows = "";
+	  colDf.foreach((r) => {
+	    df_string = df_string + "#" + r.toString().drop(1).dropRight(1);
+	    rows = rows + r.toString().drop(1).dropRight(1).split(",")(0) + " ";
+	  });
+	  
+//	  while (rows.trim().split(" ").size < rowNums.size) {
+//	    val rowsArray = rows.trim().split(" ");
+//	    val missingRows = rowNums.filterNot(rowsArray.toSet);
+//	    println("Missing Rows: " + missingRows.mkString(" "));
+////	    if (missingRows.size > 1) {
+////  	    val missedData = df.filter("rowId IN (" + missingRows.mkString(",") + ")").select(colNames.head, colNames.tail:_*).rdd.collect().foreach((r) => {
+////  	        println(r);
+////  	        df_string = df_string + "#" + r.toString().drop(1).dropRight(1);
+////  	        rows = rows + r.toString().drop(1).dropRight(1).split(",")(0) + " ";
+////        });
+////	    }
+////	    if (missingRows.size == 1) {
+//    	    missingRows.foreach((missingRow) => {
+//    	      println(missingRow);
+//    	      val missedData = df.filter("rowId = " + missingRow).select(colNames.head, colNames.tail:_*).rdd.collect();
+//    	      
+//    	      if (missedData.size > 0) {
+//    	        println(missedData(0).toString());
+//    	        
+//    	        df_string = df_string + "#" + missedData(0).toString().drop(1).dropRight(1);
+//    	        rows = rows + missingRow + " ";
+//    	      } else {
+//    	        df.show();
+//    	        df.collect().take(20).map(println);
+//    	        println(df.collect()(missingRow.toInt));
+//    	        println("No data: " + missedData.size);
+//    	      }
+//  	    })
+////	    }
+//	  }
+	  
+	  println("rows: " + rowNums.size);
+	  println("rows: " + rows.trim().split(" ").size);
+	  println("cols: " + colsSize);
+	  if (rows.trim().size > 0) {
+	    FCDF.update(count.toString() + "-" + rows.trim() + "-" + x._1._2, df_string.drop(1));
+	  }
+	  
+	});
+	
+//	val FCDFSeq = FCDF.toSeq;
+	val parallelFCDF = sparkSession.sparkContext.parallelize(FCDF.toSeq);
+//	  
+	val predictedResultsRDD2 = parallelFCDF.map((x) => {
+	  
+    import sparkSession.implicits._;
+//	  val colDf = x._2;
+    
+	  val index = x._1.trim().split("-")(0).toInt;
+	  val fc_rows = x._1.trim().split("-")(1);
+	  val fc_cols = x._1.trim().split("-")(2);
+	  val rowNums = fc_rows.trim().split(" ").map(_.toInt).toSeq;
+	  val colNamesStr = "rowId " + fc_cols + " label";
+	  val colNames = colNamesStr.split(" ");
+	  val bicCols = colNames.drop(1).dropRight(1);
+	  val colsSize = colNames.size;
+	  val rowsSize = rowNums.size;
+
+	  val data = x._2.split("#").map(y => {
+	    
+	    val size = y.split(",").size;
+	    y.split(",").zipWithIndex.map(s => {
+	       s._1.toDouble
+	    })
+	  });
+	  
+	  var bicResults = new Tuple2("","");
+	  var labelsUsed = "";
+	  
 	  var labelsSame = 0;
 	  var labelsDifferent = 0;
 	  var labelsSameLabels =  mutable.ListBuffer[String]();
@@ -230,24 +314,34 @@ object Process extends App with Context {
 	  // Keep track of how many cols result in same label vs different label
 	  // If labelsSame >= labelsDifferent, then predict all rows to have same label
 	  // Else predict as "?" and devise strategy to split the bicluster (for instance entropy based split)
-	  colDf.show();
-	  bicCols.foreach(colName => {
-	    val colSortedDF = colDf.orderBy(asc(colName));
-	    val withId = colSortedDF.withColumn("_id", monotonically_increasing_id()).orderBy("_id");
-	    var k = 0;
-	    val firstRowLabel = withId.head(1).apply(0).getAs[Integer]("label").toString();
+//	  bicDF.show();
+	  bicCols.zipWithIndex.foreach(colName => {
+	    val idx = colName._2;
+	    val colSorted = data.sortWith(_(idx+1) < _(idx+1));
+	    
+//	    val colSortedDF = colDf.orderBy(asc(colName));
+//	    val withId = colSortedDF.withColumn("_id", monotonically_increasing_id()).orderBy("_id");
+//	    val firstRowLabel = withId.head(1).apply(0).getAs[Integer]("label").toString();
+	    val firstRowLabel = colSorted(0)(colsSize-1).toInt;
 	    var areLabelsDifferent = false;
-	    val bottomWithId = withId.orderBy(desc("_id"));
+//	    val bottomWithId = withId.orderBy(desc("_id"));
+//	    println(topBottomRows);
 	    breakable {
   	    for (k <- 0 to (topBottomRows-1)) {
-            println(withId.head(k+1).apply(k).mkString(" "));
-  	        println(bottomWithId.head(k+1).apply(k).mkString(" "));
-            println("Top " + (k+1) + " row label: " + withId.head(k+1).apply(k).getAs[String]("label") + " when sorting by column: " + colName);
-            println("Bottom " + (k+1) + " row label: " + bottomWithId.head(k+1).apply(k).getAs[String]("label") + " when sorting by column: " + colName);
-            trainingLabelsSet.add(withId.head(k+1).apply(k).getAs[String]("rowId"));
-            trainingLabelsSet.add(bottomWithId.head(k+1).apply(k).getAs[String]("rowId"));
-            if ( withId.head(k+1).apply(k).getAs[Integer]("label").toString() != firstRowLabel || 
-              bottomWithId.head(k+1).apply(k).getAs[Integer]("label").toString() != firstRowLabel) {
+//            println(colSorted(k).mkString(" "));
+//            println(colSorted(rowsSize-1-k).mkString(" "));
+//            println("Top " + (k+1) + " row label: " + colSorted(k)(colsSize-1).toInt + " when sorting by column: " + colName._1);
+//            println("Bottom " + (k+1) + " row label: " + colSorted(rowsSize-1-k)(colsSize-1).toInt + " when sorting by column: " + colName._1);
+            
+            
+//            labelsUsed = labelsUsed + withId.head(k+1).apply(k).getAs[String]("rowId") + ",";
+            labelsUsed = labelsUsed + colSorted(k)(0).toInt.toString() + " ";
+//            trainingLabelsSet.add(withId.head(k+1).apply(k).getAs[String]("rowId"));
+//            labelsUsed = labelsUsed + bottomWithId.head(k+1).apply(k).getAs[String]("rowId") + ",";
+            labelsUsed = labelsUsed + colSorted(rowsSize-1-k)(0).toInt.toString() + " ";
+//            trainingLabelsSet.add(bottomWithId.head(k+1).apply(k).getAs[String]("rowId"));
+            if (colSorted(k)(colsSize-1).toInt != firstRowLabel || 
+              colSorted(rowsSize-1-k)(colsSize-1).toInt != firstRowLabel) {
               areLabelsDifferent = true;
               break;
             }
@@ -255,10 +349,10 @@ object Process extends App with Context {
 	    }
 	    
 	    if (areLabelsDifferent) {
-	      println("LABELS ARE DIFFERENT!!")
+//	      println("LABELS ARE DIFFERENT!!")
         labelsDifferent = labelsDifferent + 1;
 	    } else {
-  	    println("LABELS ARE SAME!!!");
+//  	    println("LABELS ARE SAME!!!");
   	    labelsSame = labelsSame + 1;
   	    labelsSameLabels += String.valueOf(firstRowLabel);
   	  }
@@ -266,7 +360,7 @@ object Process extends App with Context {
 	  })
 	  
 	  println("------------------------------------------");
-	  println("Final Tally: ");
+	  println("Final Tally: " + index);
 	  println( "labels same: " + labelsSame);
 	  println( "labels different: " + labelsDifferent);
 	  println("------------------------------------------");
@@ -284,9 +378,9 @@ object Process extends App with Context {
 //	        when(consolidated_df.col("rowId").isin(rowNums:_*), lit(colDf.head().getAs[String]("label")))
 //	        .otherwise(consolidated_df.col("predicted")));
 	    
-	    rowNums.foreach(rowId => {
-          mutablePredictedMap.update(rowId, labelsSameLabels.toList.head);
-      });
+//	    rowNums.foreach(rowId => {
+//          mutablePredictedMap.update(rowId, labelsSameLabels.toList.head);
+//      });
 	    
 	    // append labels as update instead of replacing to keep track of different predictions for same row
 	    
@@ -296,40 +390,117 @@ object Process extends App with Context {
 //	            + colDf.head().getAs[String]("label")))
 //	        .otherwise(consolidated_df.col("predicted")))
 //	    })
-        var new_colDf = colDf;
-        val columnNames = MainData.columnNames;
-        new_colDf = new_colDf.select( new_colDf.columns.intersect(columnNames).map(x=>col(x)): _* );
-  	    println( "saving to same csv folder - " + sameCsvCount);
+//        var new_colDf = colDf;
+//        val columnNames = MainData.columnNames;
+//        new_colDf = new_colDf.select( new_colDf.columns.intersect(columnNames).map(x=>col(x)): _* );
+//  	    println( "saving to same csv folder - " + index);
+//        
+//        new_colDf.coalesce(1).write.mode(SaveMode.Overwrite).format("csv").option("header", "true").save(folderLocation + "/same-csv/" + index);
+//        sameCsvCount = sameCsvCount+1;
+	    
+	      val saveArray: Array[String] = new Array(rowsSize+1);
+	      saveArray(0) = colNamesStr.split(" ").mkString(",") + "\r\n";
+	      data.zipWithIndex.foreach(d => {
+	        val size = d._1.size;
+	        var dataRow = "";
+	        d._1.zipWithIndex.foreach(cell => {
+	          if (cell._2 == 0) {
+	            dataRow = dataRow + cell._1.toInt.toString() + ",";
+	          } else if (cell._2 == size - 1) {
+	            dataRow = dataRow + cell._1.toInt.toString();
+	          } else {
+	            dataRow = dataRow + cell._1.toString() + ",";
+	          }
+	        })
+	        
+	        saveArray(d._2 + 1) = dataRow + "\r\n";
+	      });
+	      
+	      val file1: File = new File(folderLocation + "/same-csv");
+	      val result1 = file1.mkdir();
+	      val file2: File = new File(folderLocation + "/same-csv/" + index);
+	      val result2 = file2.mkdir();
+	      val samePw = new PrintWriter(new File(folderLocation + "/same-csv/" + index + "/" + index + ".csv"));
+	      saveArray.foreach(str => {
+	        samePw.write(str);
+//	        println(str);
+	      });
+	      samePw.close();
         
-        new_colDf.coalesce(1).write.mode(SaveMode.Overwrite).format("csv").option("header", "true").save(folderLocation + "/same-csv/" + sameCsvCount);
-        sameCsvCount = sameCsvCount+1;
+        bicResults = (fc_rows, labelsSameLabels.toList.head);
 	  } else {
 //	    colDf = colDf.withColumn("predicted", lit("?"));
 //	    consolidated_df = consolidated_df.withColumn("predicted", 
 //	        when(consolidated_df.col("rowId").isin(rowNums:_*), lit("?"))
 //	        .otherwise(consolidated_df.col("predicted")))
 	        
-      rowNums.foreach(rowId => {
-          mutablePredictedMap.update(rowId, "?");
-      });
+//      rowNums.foreach(rowId => {
+//          mutablePredictedMap.update(rowId, "?");
+//      });
 	    
 	    // append labels as update insteda of replacing to keep track of different predictions for same row
        
 	    // save biclusters in text file for trimax algorithm
 	    // potentially call the trimax algofrom here -- sys.process stringToProcess() 
 	    // https://stackoverflow.com/questions/38813810/how-to-execute-system-commands-in-scala
-      var new_colDf = colDf;
-      val columnNames = MainData.columnNames;
-      new_colDf = new_colDf.select( new_colDf.columns.intersect(columnNames).map(x=>col(x)): _* );
-	    println( "saving to csv folder - " + csvCount);
+//      var new_colDf = colDf;
+//      val columnNames = MainData.columnNames;
+//      new_colDf = new_colDf.select( new_colDf.columns.intersect(columnNames).map(x=>col(x)): _* );
+//	    println( "saving to csv folder - " + index);
+//      
+//      new_colDf.coalesce(1).write.mode(SaveMode.Overwrite).format("csv").option("header", "true").save(folderLocation + "/csv/" + index);
+////      csvCount = csvCount+1;
+	    
+	    val saveArray: Array[String] = new Array(rowsSize+1);
+	      saveArray(0) = colNamesStr.split(" ").mkString(",") + "\r\n";
+	      data.zipWithIndex.foreach(d => {
+	        val size = d._1.size;
+	        var dataRow = "";
+	        d._1.zipWithIndex.foreach(cell => {
+	          if (cell._2 == 0) {
+	            dataRow = dataRow + cell._1.toInt.toString() + ",";
+	          } else if (cell._2 == size - 1) {
+	            dataRow = dataRow + cell._1.toInt.toString();
+	          } else {
+	            dataRow = dataRow + cell._1.toString() + ",";
+	          }
+	        })
+	        
+	        saveArray(d._2 + 1) = dataRow + "\r\n";
+	      });
+	      val file1: File = new File(folderLocation + "/csv");
+	      val result1 = file1.mkdir();
+	      val file2: File = new File(folderLocation + "/csv/" + index);
+	      val result2 = file2.mkdir();
+	      val diffPw = new PrintWriter(new File(folderLocation + "/csv/" + index + "/" + index + ".csv"));
+	      saveArray.foreach(str => {
+	        diffPw.write(str);
+//	        println(str);
+	      });
+	      diffPw.close();
       
-      new_colDf.coalesce(1).write.mode(SaveMode.Overwrite).format("csv").option("header", "true").save(folderLocation + "/csv/" + csvCount);
-      csvCount = csvCount+1;
+      bicResults = (fc_rows, "?");
 	  }
-	  colDf.show();
-    x
+	  labelsUsed = labelsUsed.trim();
+	  (index, bicResults, labelsUsed)
 	})
+	
+	
+	val predictedResultsCombined = predictedResultsRDD2.collect()
+	.sortWith(_._1 < _._1)
+	.foreach(y => {
+	  
+	  y._2._1.split(" ").map(_.toInt).toSeq.foreach(rowId => {
+	    mutablePredictedMap.update(rowId, y._2._2);
+	  });
+	  
+	  y._3.split(" ").foreach(labelUsed => {
+	    trainingLabelsSet.add(labelUsed);
+	  });
+	});
 
+	
+	
 //	consolidated_df.show(25);
 	
 	val updatedRDDSubset = origDf_predicted.select("rowId", "label");
@@ -413,7 +584,7 @@ object Process extends App with Context {
 	// Then assign the maximum length itemset to the transaction (maxBy(_.length))
 	// finalConcepts are formatted as strings to print to file
 	// This variable is not used in validation
-  val finalConcepts = filteredConcepts.map( x => { 
+  val finalConcepts = filteredConcepts.collect().map( x => { 
     val rows = x._1.split(" ");
     val cols = x._2.split(" ");
 //    val tup: Array[String] = new Array[String](supportConcepts.size);

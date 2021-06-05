@@ -17,7 +17,7 @@ import java.io._;
 
 import com.amar.research.utils.Context;
 import com.amar.research.Utils.{ getMean, getRound, getTRange, getVariance };
-import com.amar.research.Process.outputFileLocation;
+import com.amar.research.Process.folderLocation;
 import org.apache.spark.SparkContext
 import scala.util.control.Breaks._;
 
@@ -34,10 +34,11 @@ object Process2 extends App with Context {
    
 	// Configuration
 	val folder = "rice-data";
-	val inputFileLocation = "src/resources/" + folder + "/output/*.csv";
-	println(inputFileLocation);
-	val output2FileLocation = "src/resources/" + folder + "/output/trimax";
-	val trainingLabelsLocation = "src/resources/" + folder + "/output/training-labels.txt";
+	// val inputFileLocation = "src/resources/" + folder + "/output/*.csv";
+	val inputFileLocation = folderLocation + "/output/*.csv";
+	val output2FileLocation = folderLocation + "/output/trimax";
+	val trainingLabelsLocation = "./output/training-labels-trimax.txt";
+	val confusionMatrixLocation = "./output/confusion-matrix-trimax.txt";
 	var minColsCounter = 7;
 
 	// Read Data
@@ -70,16 +71,16 @@ object Process2 extends App with Context {
 	var fileCounter = 1;
 	val trimaxDF = mutable.ListMap[String, String]();
   	while (minColsCounter >= minCols) {
-		val file: File = new File("src/resources/" + folder + "/csv/" + fileCounter);
+		val file: File = new File("./" + folder + "/csv/" + fileCounter);
 		println("File: " + fileCounter + " exists: " + file.exists());
 		if (file.exists()) {
-			val proc = stringToProcess("cmd /C trimax ./src/resources/" + folder + "/csv/" + fileCounter + "/*.csv " + theta + " " + minRows + " " + minColsCounter + " " + maxRows + " " + minColsCounter);
+			val proc = stringToProcess("cmd /C trimax ./" + folder + "/csv/" + fileCounter + "/*.csv " + theta + " " + minRows + " " + minColsCounter + " " + maxRows + " " + minColsCounter);
 
 			val result = proc.!!;
 			if (result.trim().length() > 0) {
 				var bicString ="";
 				var labelRow = "";
-				val bicData = sparkSession.sparkContext.textFile("src/resources/" + folder + "/csv/" + fileCounter + "/*.csv")
+				val bicData = sparkSession.sparkContext.textFile("./" + folder + "/csv/" + fileCounter + "/*.csv")
 				.collect()
 				.zipWithIndex.map((s) => {
 					if (s._2 != 0) {
@@ -253,7 +254,7 @@ object Process2 extends App with Context {
 	});
   
 	finalDf.coalesce(1).write.mode(SaveMode.Overwrite).csv(output2FileLocation);
-	val pw = new PrintWriter(new File(output2FileLocation + "/confusion-matrix.txt" ));
+	val pw = new PrintWriter(new File(confusionMatrixLocation));
 	pw.write(metrics.labels.map(_.toString).mkString(","));
 	pw.write("\r\n");
 	pw.write("\r\n");
@@ -269,7 +270,7 @@ object Process2 extends App with Context {
 	pw.write(labelsNegative.toString());
 	pw.close();
 
-	val pw1 = new PrintWriter(new File(output2FileLocation + "/training-labels.txt" ));
+	val pw1 = new PrintWriter(new File(trainingLabelsLocation));
 	pw1.write(trainingLabelsSet.mkString("\n"));
 	pw1.close();
 	println("Done");

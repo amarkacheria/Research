@@ -24,14 +24,21 @@ import com.amar.research.Utils.{ getMean, getRound, getTRange, getVariance };
 object Process extends App with Context {
 	import sparkSession.implicits._;
 	// Configuration
-	val minSupport = 100; // For Charm
+	val minSupport = 500; // For Charm
 	val minSupportCol = 1; // For filtering concepts
 	val bicValidation = 0.05; // Check 5% of rows from top and bottom for labels
-	val folder = "rice-data";
-	val inputFileLocation1 = "src/resources/" + folder + "/rice-norm.csv";
-	val folderLocation = "src/resources/" + folder;
-	val outputFileLocation = folderLocation + "/output";
-	val trange = getTRange(0.0, 7.0, 1.5, 0.15);
+	val folder = "skin-data";
+	val trange = getTRange(0.0, 255.0, 5, 1);
+	
+//	val inputFileLocation1 = "data/" + folder + "/skin-data.csv";
+//	val inputFileLocation2 = "data/" + folder + "/skin-data-transposed.csv";
+//	val folderLocation = "data/" + folder;
+//	val saveLocation = "./";
+	
+	val inputFileLocation1 = "src/resources/skin-data/skin-data-trunc.csv";
+	val inputFileLocation2 = "src/resources/skin-data/skin-data-transposed-trunc.csv";
+	val folderLocation = "src/resources/skin-data/output";
+	val saveLocation = "src/resources/skin-data";
 
 	// Read Original Data
 	val origData = sparkSession.sparkContext.textFile(inputFileLocation1);
@@ -39,24 +46,24 @@ object Process extends App with Context {
 	origData.take(5).map(println);
 
 	// Read Transposed Data - not used if transposing data in spark
-	// val transposedData = sparkSession.sparkContext.textFile(inputFileLocation2);
-	// transposedData.take(5).map(println);
+	 val transposedData = sparkSession.sparkContext.textFile(inputFileLocation2);
+//	 transposedData.take(5).map(println);
 
 	// Transpose data in spark instead of reading from two files.
 
-	val byColumnAndRow = origData.zipWithIndex.flatMap {
-		case (row, rowIndex) => row.split(',').dropRight(1).zipWithIndex.map {
-			case (number, columnIndex) => columnIndex -> (rowIndex, number)
-		}
-	}
-	// Build up the transposed matrix. Group and sort by column index first.
-	val byColumn = byColumnAndRow.groupByKey.sortByKey().values;
-	// Then sort by row index.
-	val transposedData = byColumn.map {
-		indexedRow => indexedRow.toSeq.sortBy(_._1).map(_._2).mkString(",")
-	};
-	println("Transposed");
-	transposedData.take(5).map(println);
+//	val byColumnAndRow = origData.zipWithIndex.flatMap {
+//		case (row, rowIndex) => row.split(',').dropRight(1).zipWithIndex.map {
+//			case (number, columnIndex) => columnIndex -> (rowIndex, number)
+//		}
+//	}
+//	// Build up the transposed matrix. Group and sort by column index first.
+//	val byColumn = byColumnAndRow.groupByKey.sortByKey().values;
+//	// Then sort by row index.
+//	val transposedData = byColumn.map {
+//		indexedRow => indexedRow.toSeq.sortBy(_._1).map(_._2).mkString(",")
+//	};
+//	println("Transposed");
+//	transposedData.take(5).map(println);
 
 	//-----------------------------------------------------------------------------------
 	// 1. Preprocessing
@@ -73,7 +80,7 @@ object Process extends App with Context {
 		.concat("%" + idx)
 	}
 	println("Processed");
-	prepData.take(5).map(println);
+//	prepData.take(5).map(println);
 
 	// T-Range Generation for mean-ranges for test-dataset
 	// Used if multiple T-ranges are required
@@ -84,8 +91,8 @@ object Process extends App with Context {
 	//	val trange = List.concat(trange1, trange2, trange3, trange4);
 
 	// Print trange
-	val trangeList = trange.map(x => x._1 + ":" + x._2)
-	println(trangeList.mkString(","));
+//	val trangeList = trange.map(x => x._1 + ":" + x._2)
+//	println(trangeList.mkString(","));
 
 	//-----------------------------------------------------------------------------------
 	// 2. BicPhaseOne
@@ -95,7 +102,7 @@ object Process extends App with Context {
 	// Output: 15.0:15.33	   0.0$1#15.0,2#15.1,3#15.4$3 <-- the Bic_Str
 	val biclusteredData = prepData.flatMap(line => PreProcess.processLine(line, trange));
 	println("Biclustered");
-	biclusteredData.take(5).map(println);
+//	biclusteredData.take(5).map(println);
 
 	// Gather the biclusters which fall in the same mean range
 	// Store in Map -> (mean_range, List(Bic_Str))
@@ -104,7 +111,7 @@ object Process extends App with Context {
 		.map(x => (x._1, x._2.toList.map(_.split("\t")(1))))
 
 	println("Reduced");
-	reducedData.take(5).map(println);
+//	reducedData.take(5).map(println);
 	// --------------------------------------------------------------------
 	// 3. CHARM Phase
 	// algorithm finds closed frequent itemsets
@@ -112,12 +119,12 @@ object Process extends App with Context {
 	CallCharm.setMinSupport(minSupport);
 	val afterCharm = reducedData.map(CallCharm.formatItemSets);
 	println("After Charm");
-	afterCharm.take(5).map(println);
+//	afterCharm.take(5).map(println);
 	println("---------------------------------------------------------------------------------------------------------------------------");
 
 	val groupAfterCharm = afterCharm.flatMap(x => x).distinct();
 	println("Group After Charm");
-	groupAfterCharm.take(10).map(println);
+//	groupAfterCharm.take(10).map(println);
 	println("---------------------------------------------------------------------------------------------------------------------------");
 
 	val conceptRows: ListBuffer[Int] = new ListBuffer[Int]();
@@ -127,7 +134,7 @@ object Process extends App with Context {
 		.filter(_._1.split(" ").length >= minSupport);
 
 	println("Filtered Concepts");
-	filteredConcepts.take(10).map(println);
+//	filteredConcepts.take(1).map(println);
 	println("---------------------------------------------------------------------------------------------------------------------------");
 
 	// Collect Filtered Concepts
@@ -208,17 +215,19 @@ object Process extends App with Context {
 	// Time consuming loop to take all FCs and combine with the original data
 	// Chose to do this instead of appending original data through the entire Charm process
 	val predictedResultsRDD = sortedConcepts.foreach(x => {
-		println(" ");
-		println("xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx");
+//		println(" ");
+//		println("xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx");
 		count = count + 1;
-		println(count + "/" + collectedConcepts.size);
-		val rowNums = x._1.split(" ");
+//		println(count + "/" + collectedConcepts.size);
+		val rowNums = x._1.split(" ").map(_.toInt);
 		val colNamesStr = "rowId " + x._2 + " label";
 		val colNames = colNamesStr.split(" ");
 		// Create new DF with rows and cols from this bicluster
 		// Collect this data from the distributed data for each concept
 		// (expensive, but less expensive than propagating data through the whole charm process and running into "out of memory")
-		val colDf = df.filter("rowId IN (" + rowNums.mkString(",") + ")").select(colNames.head, colNames.tail: _*).rdd.collect();
+//		println("ROWS: " + rowNums.mkString(","));
+		println(rowNums.length);
+		val colDf = df.filter(col("rowId").isin(rowNums:_*)).select(colNames.head, colNames.tail: _*).rdd.collect();
 
 		var df_string = "";
 		var rows = "";
@@ -231,8 +240,8 @@ object Process extends App with Context {
 			rows = rows + r.toString().drop(1).dropRight(1).split(",")(0) + " ";
 		});
 
-		println("rows: " + rows.trim().split(" ").size);
-		println("cols: " + x._2.split(" ").size);
+//		println("rows: " + rows.trim().split(" ").size);
+//		println("cols: " + x._2.split(" ").size);
 		if (rows.trim().size > 0) {
 			// Add to map that will be processed in parallel
 			// Key = Index - rows - cols
@@ -276,6 +285,7 @@ object Process extends App with Context {
 		// These are used in results to figure out how many labels were needed in total and how many predictions were made using those labels
 		var bicResults = new Tuple2("", "");
 		var labelsUsed = "";
+		var saveArray : Array[String] = new Array(rowsSize + 1);
 
 		// Keep track of predictions after sorting by each column
 		var labelsSame = 0;
@@ -324,14 +334,14 @@ object Process extends App with Context {
 				labelsSame = labelsSame + 1;
 				labelsSameLabels += String.valueOf(firstRowLabel);
 			}
-			println(" ");
+//			println(" ");
 		});
 
-		println("------------------------------------------");
-		println("Final Tally: " + index);
-		println("labels same: " + labelsSame);
-		println("labels different: " + labelsDifferent);
-		println("------------------------------------------");
+//		println("------------------------------------------");
+//		println("Final Tally: " + index);
+//		println("labels same: " + labelsSame);
+//		println("labels different: " + labelsDifferent);
+//		println("------------------------------------------");
 
 		var allLabelsSame = false;
 		if (labelsSameLabels.toList.exists(_ != labelsSameLabels.toList.head)) {
@@ -343,7 +353,7 @@ object Process extends App with Context {
 		// Saving this array is not needed but it is done for verification purposes.
 		// Remove this for final timing
 		if (labelsSame > labelsDifferent && allLabelsSame) {
-			val saveArray: Array[String] = new Array(rowsSize + 1);
+//			val saveArray: Array[String] = new Array(rowsSize + 1);
 			saveArray(0) = colNamesStr.split(" ").mkString(",") + "\r\n";
 			data.zipWithIndex.foreach(d => {
 				val size = d._1.size;
@@ -361,20 +371,21 @@ object Process extends App with Context {
 				saveArray(d._2 + 1) = dataRow + "\r\n";
 			});
 			// Create path if does not exist
-			val file1: File = new File(folderLocation + "/same-csv");
-			val result1 = file1.mkdir();
-			val file2: File = new File(folderLocation + "/same-csv/" + index);
-			val result2 = file2.mkdir();
-			val samePw = new PrintWriter(new File(folderLocation + "/same-csv/" + index + "/" + index + ".csv"));
-			saveArray.foreach(str => {
-				samePw.write(str);
-			});
-			samePw.close();
+//			val file1: File = new File(saveLocation + "/same-csv");
+//			val result1 = file1.mkdir();
+//			val file2: File = new File(saveLocation + "/same-csv/" + index);
+//			val result2 = file2.mkdir();
+//			val samePw = new PrintWriter(new File(saveLocation + "/same-csv/" + index + "/" + index + ".csv"));
+//			saveArray.foreach(str => {
+//				samePw.write(str);
+//			});
+//			samePw.close();
+			
 			// bicResults will capture the rowIds and the predicted value for those rows
 			bicResults = (fc_rows, labelsSameLabels.toList.head);
 		} else {
 			// Labels are not same so these bics should be saved so trimax can try to split and predict
-			val saveArray: Array[String] = new Array(rowsSize + 1);
+//			val saveArray: Array[String] = new Array(rowsSize + 1);
 			saveArray(0) = colNamesStr.split(" ").mkString(",") + "\r\n";
 			data.zipWithIndex.foreach(d => {
 				val size = d._1.size;
@@ -392,22 +403,22 @@ object Process extends App with Context {
 				saveArray(d._2 + 1) = dataRow + "\r\n";
 			});
 			// Create path if does not exist
-			val file1: File = new File(folderLocation + "/csv");
-			val result1 = file1.mkdir();
-			val file2: File = new File(folderLocation + "/csv/" + index);
-			val result2 = file2.mkdir();
-			val diffPw = new PrintWriter(new File(folderLocation + "/csv/" + index + "/" + index + ".csv"));
-			saveArray.foreach(str => {
-				diffPw.write(str);
-			});
-			diffPw.close();
+//			val file1: File = new File(saveLocation + "/csv");
+//			val result1 = file1.mkdir();
+//			val file2: File = new File(saveLocation + "/csv/" + index);
+//			val result2 = file2.mkdir();
+//			val diffPw = new PrintWriter(new File(saveLocation + "/csv/" + index + "/" + index + ".csv"));
+//			saveArray.foreach(str => {
+//				diffPw.write(str);
+//			});
+//			diffPw.close();
 			// Set these rows as could not be predicted
 			bicResults = (fc_rows, "?");
 		}
 
 		labelsUsed = labelsUsed.trim();
 		// Each bic will emit index, the results predicted, and the labels used
-		(index, bicResults, labelsUsed)
+		(index, bicResults, labelsUsed, saveArray)
 	});
 
 	// Reducer to combine the predicted results processed in parallel
@@ -425,6 +436,30 @@ object Process extends App with Context {
 			y._3.split(" ").foreach(labelUsed => {
 				trainingLabelsSet.add(labelUsed);
 			});
+			
+			if (y._2._2 == "?") {
+				val file1: File = new File(saveLocation + "/csv");
+				val result1 = file1.mkdir();
+				val file2: File = new File(saveLocation + "/csv/" + y._1);
+				val result2 = file2.mkdir();
+				val diffPw = new PrintWriter(new File(saveLocation + "/csv/" + y._1 + "/" + y._1 + ".csv"));
+				y._4.foreach(str => {
+					diffPw.write(str);
+				});
+				diffPw.close();
+			} else{
+				val file1: File = new File(saveLocation + "/same-csv");
+				val result1 = file1.mkdir();
+				val file2: File = new File(saveLocation + "/same-csv/" + y._1);
+				val result2 = file2.mkdir();
+				val samePw = new PrintWriter(new File(saveLocation + "/same-csv/" + y._1 + "/" + y._1 + ".csv"));
+				y._4.foreach(str => {
+					samePw.write(str);
+				});
+				samePw.close();
+				
+				
+			}
 		});
 
 	// Consruct Confusion Matrix
@@ -474,8 +509,10 @@ object Process extends App with Context {
 	});
 
 	// Write the confusion matrix results to a file
-	finalDf.coalesce(1).write.mode(SaveMode.Overwrite).csv(outputFileLocation);
-	val pw = new PrintWriter(new File(outputFileLocation + "/confusion-matrix.txt"))
+	finalDf.coalesce(1).write.mode(SaveMode.Overwrite).csv(folderLocation + "/output");
+	val outputFolder: File = new File(saveLocation + "/output");
+	val resultOutputFolder = outputFolder.mkdir();
+	val pw = new PrintWriter(new File(saveLocation + "/output" + "/confusion-matrix.txt"))
 	pw.write(metrics.labels.map(_.toString).mkString(","))
 	pw.write("\r\n");
 	pw.write("\r\n");
@@ -491,12 +528,12 @@ object Process extends App with Context {
 	pw.write(labelsNegative.toString());
 	pw.close();
 
-	val pw1 = new PrintWriter(new File(outputFileLocation + "/training-labels.txt"));
+	val pw1 = new PrintWriter(new File(saveLocation + "/output" + "/training-labels.txt"));
 	pw1.write(trainingLabelsSet.mkString("\n"));
 	pw1.close();
 
 	// Print concepts to a file
-	val pw2 = new PrintWriter(new File(outputFileLocation + "/concepts.txt"));
+	val pw2 = new PrintWriter(new File(saveLocation + "/output" + "/concepts.txt"));
 	val printConcepts = sortedConcepts.foreach(x => {
 		val rows = x._1.split(" ");
 		val cols = x._2.split(" ");
@@ -520,6 +557,6 @@ object Process extends App with Context {
 
 	println("DONE");
 	println("Thread is now sleeping...");
-	Thread.sleep(100000); // Used to keep spark server running for debugging
+	Thread.sleep(1000); // Used to keep spark server running for debugging
 
 }

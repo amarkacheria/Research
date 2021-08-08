@@ -17,9 +17,9 @@ import java.io._;
 
 import com.amar.research.utils.Context;
 import com.amar.research.Utils.{ getMean, getRound, getTRange, getVariance };
-import com.amar.research.Process.folderLocation;
 import org.apache.spark.SparkContext
 import scala.util.control.Breaks._;
+import com.amar.research.Process.folderLocation;
 
 object Process2 extends App with Context {
 	// find a way to add max cols from driver 1 so minColsCounter can be set accordingly in driver2

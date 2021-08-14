@@ -26,11 +26,12 @@ object Process extends App with Context {
 
 	import sparkSession.implicits._;
 	// Configuration
-	var minSupport = 100; // For Charm
+	var minSupport = 150; // For Charm
 	var minSupportCol = 1; // For filtering concepts
 	var bicValidation = 0.05; // Check 5% of rows from top and bottom for labels
 	val folder = "rice-data";
-	var trange = getTRange(0.0, 7.0, 1.1, 0.11);
+	val fileName = "/rice-norm.csv";
+	var trange = getTRange(0.0, 7.0, 1.9, 0.19);
 
 	println("Hello from main of object")
 	println(args);
@@ -44,10 +45,10 @@ object Process extends App with Context {
 		minSupport = args(6).toInt;
 	}
 
-	val inputFileLocation1 = "data/" + folder + "/skin-data.csv";
-	val inputFileLocation2 = "data/" + folder + "/skin-data-transposed.csv";
-	val folderLocation = "data/" + folder;
-	val saveLocation = "./";
+	val inputFileLocation1 = "src/resources/" + folder + fileName;
+//	val inputFileLocation2 = "data/" + folder + "/skin-data-transposed.csv";
+	val folderLocation = "src/resources/" + folder;
+	val saveLocation = folderLocation;
 
 //	val inputFileLocation1 = "src/resources/skin-data/skin-data-trunc.csv";
 //	val inputFileLocation2 = "src/resources/skin-data/skin-data-transposed-trunc.csv";
@@ -228,27 +229,6 @@ object Process extends App with Context {
 	val FCDF = mutable.ListMap[String, String]();
 	// To keep track of indices after sorting the array
 	var count = 0;
-	
-		// Print concepts to a file
-	val outputFolder: File = new File(saveLocation + "/output");
-	val resultOutputFolder = outputFolder.mkdir();
-	val pw2 = new PrintWriter(new File(saveLocation + "/output" + "/concepts.txt"));
-	val printConcepts = sortedConcepts.foreach(x => {
-		val rows = x._1.split(" ");
-		val cols = x._2.split(" ");
-		//    val tup: Array[String] = new Array[String](supportConcepts.size);
-		//    supportConcepts.zipWithIndex.map(c => {
-		//        val n_items = c._1.size
-		//        tup(c._2) = x._1+","+c._1++" % "+n_trans+","+n_items
-		//    });
-		//     val n_dup = x._2.size
-		//     val tup = x._1+","+x._2.maxBy(_.length)+" % "+n_trans+","+n_items+","+n_dup
-		//     tup
-		val printString = rows.size + " , " + cols.size + " % " + cols.mkString(" ") + " , " + rows.mkString(" ");
-		pw2.write("" + printString);
-		pw2.write("\r\n");
-	});
-	pw2.close();
 
 	// Time consuming loop to take all FCs and combine with the original data
 	// Chose to do this instead of appending original data through the entire Charm process
@@ -256,7 +236,7 @@ object Process extends App with Context {
 		//		println(" ");
 		//		println("xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx");
 		count = count + 1;
-		//		println(count + "/" + collectedConcepts.size);
+		println(count + "/" + sortedConcepts.size);
 		val rowNums = x._1.split(" ").map(_.toInt);
 		val colNamesStr = "rowId " + x._2 + " label";
 		val colNames = colNamesStr.split(" ");
@@ -264,8 +244,8 @@ object Process extends App with Context {
 		// Collect this data from the distributed data for each concept
 		// (expensive, but less expensive than propagating data through the whole charm process and running into "out of memory")
 		//		println("ROWS: " + rowNums.mkString(","));
-		println(rowNums.length);
-		println(colNamesStr);
+//		println(rowNums.length);
+//		println(colNamesStr);
 //		val colDf = df.filter(col("rowId").isin(rowNums: _*)).select(colNames.head, colNames.tail: _*).rdd.collect();
 		
 		
@@ -573,6 +553,27 @@ object Process extends App with Context {
 	val pw1 = new PrintWriter(new File(saveLocation + "/output" + "/training-labels.txt"));
 	pw1.write(trainingLabelsSet.mkString("\n"));
 	pw1.close();
+	
+	// Print concepts to a file
+//	val outputFolder: File = new File(saveLocation + "/output");
+//	val resultOutputFolder = outputFolder.mkdir();
+	val pw2 = new PrintWriter(new File(saveLocation + "/output" + "/concepts.txt"));
+	val printConcepts = sortedConcepts.foreach(x => {
+		val rows = x._1.split(" ");
+		val cols = x._2.split(" ");
+		//    val tup: Array[String] = new Array[String](supportConcepts.size);
+		//    supportConcepts.zipWithIndex.map(c => {
+		//        val n_items = c._1.size
+		//        tup(c._2) = x._1+","+c._1++" % "+n_trans+","+n_items
+		//    });
+		//     val n_dup = x._2.size
+		//     val tup = x._1+","+x._2.maxBy(_.length)+" % "+n_trans+","+n_items+","+n_dup
+		//     tup
+		val printString = rows.size + " , " + cols.size + " % " + cols.mkString(" ") + " , " + rows.mkString(" ");
+		pw2.write("" + printString);
+		pw2.write("\r\n");
+	});
+	pw2.close();
 
 //	// Print concepts to a file
 //	val pw2 = new PrintWriter(new File(saveLocation + "/output" + "/concepts.txt"));

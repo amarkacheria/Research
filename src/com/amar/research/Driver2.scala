@@ -15,6 +15,7 @@ import org.apache.spark.rdd.RDD;
 import scala.sys.process.stringToProcess;
 import java.io._;
 
+import java.util.Calendar;
 import com.amar.research.utils.Context;
 import com.amar.research.Utils.{ getMean, getRound, getTRange, getVariance };
 import org.apache.spark.SparkContext
@@ -25,15 +26,15 @@ object Process2 extends App with Context {
 	// find a way to add max cols from driver 1 so minColsCounter can be set accordingly in driver2
 	import sparkSession.implicits._;
 	// Parameters
-	val theta = 0.15;
-	val minRows = 10;
-	val maxRows = 100;
+	val theta = 0.025;
+	val minRows = 100;
+	val maxRows = 100000;
 	val minCols = 1;
-	val bicValidation = 0.05;
-	val lastFile = 219;
+	val bicValidation = 0.025;
+	val lastFile = 279;
    
 	// Configuration
-	val folderLocation = "src/resources/rice-data";
+	val folderLocation = "src/resources/rice-data20x";
 	println(folderLocation);
 	// val inputFileLocation = "src/resources/" + folder + "/output/*.csv";
 	val inputFileLocation = folderLocation + "/output/*.csv";
@@ -43,6 +44,8 @@ object Process2 extends App with Context {
 	val trainingLabelsLocation2 = output2FileLocation + "/training-labels-trimax.txt";
 	var minColsCounter = 7;
 
+	val startTime = Calendar.getInstance().getTime();
+	
 	// Read Data
 	val predictedData = sparkSession.sparkContext.textFile(inputFileLocation);
 
@@ -77,8 +80,19 @@ object Process2 extends App with Context {
 		println("File: " + fileCounter + " exists: " + file.exists());
 		if (file.exists()) {
 			val proc = stringToProcess("cmd /C trimax ./" + folderLocation + "/csv/" + fileCounter + "/*.csv " + theta + " " + minRows + " " + minColsCounter + " " + maxRows + " " + minColsCounter);
-
-			val result = proc.!!;
+			println("output " + fileCounter);
+			var result = "";
+//			result = proc.!!;
+//			Thread.sleep(1000);
+			try {
+				result = proc.!!;
+			} catch {
+				case e: RuntimeException => println("RuntimeException");
+				Thread.sleep(1000);
+				fileCounter = fileCounter - 1;
+			}
+			
+			println("result: " + result);
 			if (result.trim().length() > 0) {
 				var bicString ="";
 				var labelRow = "";

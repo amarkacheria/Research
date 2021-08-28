@@ -18,6 +18,7 @@ import java.io._;
 import scala.util.control.Breaks._;
 import org.apache.spark.SparkContext._;
 
+import java.util.Calendar;
 import com.amar.research.utils.Context;
 import com.amar.research.Utils.{ getMean, getRound, getTRange, getVariance };
 import scala.App;
@@ -25,19 +26,20 @@ import scala.App;
 object Process extends App with Context {
 
 	import sparkSession.implicits._;
+	
+	val startTime = Calendar.getInstance().getTime();
 	// Configuration
-	var minSupport = 150; // For Charm
+	var minSupport = 800; // For Charm
 	var minSupportCol = 1; // For filtering concepts
-	var bicValidation = 0.05; // Check 5% of rows from top and bottom for labels
-	val folder = "rice-data";
-	val fileName = "/rice-norm.csv";
-	var trange = getTRange(0.0, 7.0, 1.9, 0.19);
+	var bicValidation = 0.01; // Check 5% of rows from top and bottom for labels
+	val folder = "rice-data25x";
+	val fileName = "/rice-norm25x.csv";
+	var trange = getTRange(0.0, 7.0, 0.1, 0.01);
 
 	println("Hello from main of object")
 	println(args);
 	println(args.size);
 	args.map(println(_));
-	println("done");
 	if (args.size > 0) {
 		trange = getTRange(args(0).toDouble, args(1).toDouble, args(2).toDouble, args(3).toDouble);
 		bicValidation = args(4).toDouble;
@@ -483,7 +485,11 @@ object Process extends App with Context {
 
 			}
 		});
-
+		
+	
+	println("Start time: " + startTime);
+	println("End time: " + Calendar.getInstance().getTime());
+	val endTime = Calendar.getInstance().getTime();
 	// Consruct Confusion Matrix
 	// Create map of all rows (rowId, label, prediction)
 	val updatedRDDSubset = origDf_predicted.select("rowId", "label");
@@ -548,6 +554,12 @@ object Process extends App with Context {
 	pw.write("\r\n");
 	pw.write("LN: ");
 	pw.write(labelsNegative.toString());
+	pw.write("\r\n");
+	pw.write("StartTime: ");
+	pw.write(startTime.toString());
+	pw.write("\r\n");
+	pw.write("EndTime: ");
+	pw.write(endTime.toString());
 	pw.close();
 
 	val pw1 = new PrintWriter(new File(saveLocation + "/output" + "/training-labels.txt"));

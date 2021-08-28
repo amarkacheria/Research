@@ -26,22 +26,34 @@ object Process2 extends App with Context {
 	// find a way to add max cols from driver 1 so minColsCounter can be set accordingly in driver2
 	import sparkSession.implicits._;
 	// Parameters
-	val theta = 0.025;
-	val minRows = 100;
+	var theta = 0.025;
+	var minRows = 100;
 	val maxRows = 100000;
-	val minCols = 1;
-	val bicValidation = 0.025;
-	val lastFile = 279;
-   
+	var minCols = 1;
+	var bicValidation = 0.025;
+	var lastFile = 500;
+    val folder = "rice-data";
+    val folderLocation = "data/" + folder;
+	
+	println("Hello from main of object")
+	println(args);
+	println(args.size);
+	args.map(println(_));
+	if (args.size > 0) {
+		theta = args(0).toDouble;
+		minRows = args(1).toInt;
+		minCols = args(2).toInt;
+		bicValidation = args(3).toDouble;
+		lastFile = args(4).toInt;
+	}
+	
+	
 	// Configuration
-	val folderLocation = "src/resources/rice-data20x";
-	println(folderLocation);
-	// val inputFileLocation = "src/resources/" + folder + "/output/*.csv";
 	val inputFileLocation = folderLocation + "/output/*.csv";
 	val output2FileLocation = folderLocation + "/output/trimax";
-	val trainingLabelsLocation = folderLocation + "/output/training-labels.txt";
-	val confusionMatrixLocation2 = output2FileLocation + "/confusion-matrix-trimax.txt";
-	val trainingLabelsLocation2 = output2FileLocation + "/training-labels-trimax.txt";
+	val trainingLabelsLocation = "./output/training-labels.txt";
+	val confusionMatrixLocation2 = "./output/confusion-matrix-trimax.txt";
+	val trainingLabelsLocation2 = "./output/training-labels-trimax.txt";
 	var minColsCounter = 7;
 
 	val startTime = Calendar.getInstance().getTime();
@@ -76,10 +88,10 @@ object Process2 extends App with Context {
 	var fileCounter = 1;
 	val trimaxDF = mutable.ListMap[String, String]();
   	while (minColsCounter >= minCols) {
-		val file: File = new File( folderLocation + "/csv/" + fileCounter);
+		val file: File = new File( "./" + folder + "/csv/" + fileCounter);
 		println("File: " + fileCounter + " exists: " + file.exists());
 		if (file.exists()) {
-			val proc = stringToProcess("cmd /C trimax ./" + folderLocation + "/csv/" + fileCounter + "/*.csv " + theta + " " + minRows + " " + minColsCounter + " " + maxRows + " " + minColsCounter);
+			val proc = stringToProcess("cmd /C trimax ./" + folder + "/csv/" + fileCounter + "/*.csv " + theta + " " + minRows + " " + minColsCounter + " " + maxRows + " " + minColsCounter);
 			println("output " + fileCounter);
 			var result = "";
 //			result = proc.!!;
@@ -96,7 +108,7 @@ object Process2 extends App with Context {
 			if (result.trim().length() > 0) {
 				var bicString ="";
 				var labelRow = "";
-				val bicData = sparkSession.sparkContext.textFile("./" + folderLocation + "/csv/" + fileCounter + "/*.csv")
+				val bicData = sparkSession.sparkContext.textFile("./" + folder + "/csv/" + fileCounter + "/*.csv")
 				.collect()
 				.zipWithIndex.map((s) => {
 					if (s._2 != 0) {
@@ -234,6 +246,10 @@ object Process2 extends App with Context {
 	}
   
   	println("updatedRDDMap done");
+  	
+  	println("Start Time: " + startTime);
+  	val endTime = Calendar.getInstance().getTime();
+  	println("End Time: " + endTime);
   
   	val finalDf = sparkSession.createDataFrame(updatedRDDMap, org.apache.spark.sql.types.StructType(MainData.getSchemaPredicted()));
 
@@ -284,6 +300,12 @@ object Process2 extends App with Context {
 	pw.write("\r\n");
 	pw.write("LN: ");
 	pw.write(labelsNegative.toString());
+	pw.write("\r\n");
+	pw.write("StartTime: ");
+	pw.write(startTime.toString());
+	pw.write("\r\n");
+	pw.write("EndTime: ");
+	pw.write(endTime.toString());
 	pw.close();
 
 	val pw1 = new PrintWriter(new File(trainingLabelsLocation2));

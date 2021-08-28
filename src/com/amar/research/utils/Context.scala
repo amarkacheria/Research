@@ -12,8 +12,8 @@ trait Context {
   lazy val sparkConf = new SparkConf()
     .setAppName("Amar Research")
     .setMaster("local[*]")
-    .set("spark.executor.memory", "2g")  
-    .set("spark.driver.memory", "6g")
+    .set("spark.executor.memory", "8g")  
+    .set("spark.driver.memory", "16g")
     .set("spark.serializer", "org.apache.spark.serializer.KryoSerializer")
     .set("spark.sql.codegen.wholeStage", "false")
 

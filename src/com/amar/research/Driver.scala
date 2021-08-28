@@ -32,8 +32,8 @@ object Process extends App with Context {
 	var minSupport = 800; // For Charm
 	var minSupportCol = 1; // For filtering concepts
 	var bicValidation = 0.01; // Check 5% of rows from top and bottom for labels
-	val folder = "rice-data25x";
-	val fileName = "/rice-norm25x.csv";
+	val folder = "rice-data";
+	var fileName = "/rice-norm.csv";
 	var trange = getTRange(0.0, 7.0, 0.1, 0.01);
 
 	println("Hello from main of object")
@@ -45,12 +45,13 @@ object Process extends App with Context {
 		bicValidation = args(4).toDouble;
 		minSupportCol = args(5).toInt;
 		minSupport = args(6).toInt;
+		fileName = args(7).toString;
 	}
 
 	val inputFileLocation1 = "src/resources/" + folder + fileName;
 //	val inputFileLocation2 = "data/" + folder + "/skin-data-transposed.csv";
-	val folderLocation = "src/resources/" + folder;
-	val saveLocation = folderLocation;
+	val folderLocation = "data/" + folder;
+	val saveLocation = "./";
 
 //	val inputFileLocation1 = "src/resources/skin-data/skin-data-trunc.csv";
 //	val inputFileLocation2 = "src/resources/skin-data/skin-data-transposed-trunc.csv";
@@ -488,8 +489,8 @@ object Process extends App with Context {
 		
 	
 	println("Start time: " + startTime);
-	println("End time: " + Calendar.getInstance().getTime());
 	val endTime = Calendar.getInstance().getTime();
+	println("End time: " + endTime);
 	// Consruct Confusion Matrix
 	// Create map of all rows (rowId, label, prediction)
 	val updatedRDDSubset = origDf_predicted.select("rowId", "label");
@@ -610,7 +611,5 @@ object Process extends App with Context {
 	println("---------------------------------------------------------------------------------------------------------------------------");
 
 	println("DONE");
-	println("Thread is now sleeping...");
-	Thread.sleep(1000); // Used to keep spark server running for debugging
 
 }

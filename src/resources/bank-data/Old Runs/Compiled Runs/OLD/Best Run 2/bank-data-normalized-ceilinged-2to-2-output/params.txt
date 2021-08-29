@@ -1,4 +1,0 @@
-Charm Min Support
-
-Rows = 25
-Col = 3

@@ -48,7 +48,7 @@ object Process extends App with Context {
 		fileName = args(7).toString;
 	}
 
-	val inputFileLocation1 = "src/resources/" + folder + fileName;
+	val inputFileLocation1 = "data/" + folder + "/" + fileName;
 //	val inputFileLocation2 = "data/" + folder + "/skin-data-transposed.csv";
 	val folderLocation = "data/" + folder;
 	val saveLocation = "./";

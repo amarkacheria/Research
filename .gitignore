@@ -2,5 +2,6 @@
 .cache-main
 .classpath
 .project
+src/resources/
 
 bin/

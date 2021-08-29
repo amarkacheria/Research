@@ -29,11 +29,11 @@ object Process extends App with Context {
 	
 	val startTime = Calendar.getInstance().getTime();
 	// Configuration
-	var minSupport = 800; // For Charm
+	var minSupport = 1000; // For Charm
 	var minSupportCol = 1; // For filtering concepts
-	var bicValidation = 0.01; // Check 5% of rows from top and bottom for labels
-	val folder = "rice-data25x";
-	val fileName = "/rice-norm25x.csv";
+	var bicValidation = 0.005; // Check 5% of rows from top and bottom for labels
+	val folder = "rice-data30x";
+	val fileName = "/rice-norm30x.csv";
 	var trange = getTRange(0.0, 7.0, 0.1, 0.01);
 
 	println("Hello from main of object")

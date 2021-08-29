@@ -30,11 +30,11 @@ object Process2 extends App with Context {
 	val minRows = 100;
 	val maxRows = 100000;
 	val minCols = 1;
-	val bicValidation = 0.025;
-	val lastFile = 279;
+	val bicValidation = 0.0075;
+	val lastFile = 277;
    
 	// Configuration
-	val folderLocation = "src/resources/rice-data20x";
+	val folderLocation = "src/resources/rice-data30x";
 	println(folderLocation);
 	// val inputFileLocation = "src/resources/" + folder + "/output/*.csv";
 	val inputFileLocation = folderLocation + "/output/*.csv";

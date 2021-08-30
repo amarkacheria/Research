@@ -30,7 +30,7 @@ object Process2 extends App with Context {
 	val minRows = 100;
 	val maxRows = 100000;
 	val minCols = 1;
-	val bicValidation = 0.0075;
+	val bicValidation = 0.005;
 	val lastFile = 277;
    
 	// Configuration

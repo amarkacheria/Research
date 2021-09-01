@@ -539,8 +539,8 @@ object Process extends App with Context {
 
 	// Write the confusion matrix results to a file
 	finalDf.coalesce(1).write.mode(SaveMode.Overwrite).csv(folderLocation + "/output");
-//	val outputFolder: File = new File(saveLocation + "/output");
-//	val resultOutputFolder = outputFolder.mkdir();
+	val outputFolder: File = new File(saveLocation + "/output");
+	val resultOutputFolder = outputFolder.mkdir();
 	val pw = new PrintWriter(new File(saveLocation + "/output" + "/confusion-matrix.txt"))
 	pw.write(metrics.labels.map(_.toString).mkString(","))
 	pw.write("\r\n");

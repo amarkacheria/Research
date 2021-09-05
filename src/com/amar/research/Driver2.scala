@@ -21,6 +21,7 @@ import com.amar.research.Utils.{ getMean, getRound, getTRange, getVariance };
 import org.apache.spark.SparkContext
 import scala.util.control.Breaks._;
 import com.amar.research.Process.folderLocation;
+import sys.process._;
 
 object Process2 extends App with Context {
 	// find a way to add max cols from driver 1 so minColsCounter can be set accordingly in driver2
@@ -51,7 +52,7 @@ object Process2 extends App with Context {
 	// Configuration
 	val inputFileLocation = folderLocation + "/output/*.csv";
 	val output2FileLocation = folderLocation + "/output/trimax";
-	val trainingLabelsLocation = "./output/training-labels.txt";
+	val trainingLabelsLocation = "data/rice-data/output/training-labels.txt";
 	val confusionMatrixLocation2 = "./output/confusion-matrix-trimax.txt";
 	val trainingLabelsLocation2 = "./output/training-labels-trimax.txt";
 	var minColsCounter = 7;
@@ -88,10 +89,11 @@ object Process2 extends App with Context {
 	var fileCounter = 1;
 	val trimaxDF = mutable.ListMap[String, String]();
   	while (minColsCounter >= minCols) {
-		val file: File = new File( "./" + folder + "/csv/" + fileCounter);
+		val file: File = new File( "./csv/" + fileCounter);
 		println("File: " + fileCounter + " exists: " + file.exists());
+		
 		if (file.exists()) {
-			val proc = stringToProcess("cmd /C trimax ./" + folder + "/csv/" + fileCounter + "/*.csv " + theta + " " + minRows + " " + minColsCounter + " " + maxRows + " " + minColsCounter);
+			val proc = stringToProcess("./trimax-unix ./csv/" + fileCounter + "/*.csv " + theta + " " + minRows + " " + minColsCounter + " " + maxRows + " " + minColsCounter);
 			println("output " + fileCounter);
 			var result = "";
 //			result = proc.!!;

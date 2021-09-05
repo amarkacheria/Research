@@ -33,9 +33,16 @@ object MainData {
   }
   
   def mapToDFPredicted(x: String): Row = {
-    return Row(
+	  if (x.split(",").length == 3) {
+	 	  return Row(
         x.split(",")(0).toInt, x.split(",")(1).toInt, x.split(",")(2).toString()
         )
+	  } else {
+	 	  return Row(
+        x.split(",")(0).toInt, x.split(",")(1).toInt, ""
+        )
+	  }
+    
   }
   
   def getSchema(): List[StructField] = {

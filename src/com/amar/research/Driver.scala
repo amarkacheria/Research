@@ -32,8 +32,8 @@ object Process extends App with Context {
 	var minSupport = 1000; // For Charm
 	var minSupportCol = 1; // For filtering concepts
 	var bicValidation = 0.005; // Check 5% of rows from top and bottom for labels
-	val folder = "rice-data30x";
-	val fileName = "/rice-norm30x.csv";
+	val folder = "rice-data";
+	val fileName = "/rice-norm.csv";
 	var trange = getTRange(0.0, 7.0, 0.1, 0.01);
 
 	println("Hello from main of object")

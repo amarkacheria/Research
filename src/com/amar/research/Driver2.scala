@@ -30,8 +30,8 @@ object Process2 extends App with Context {
 	val minRows = 100;
 	val maxRows = 100000;
 	val minCols = 1;
-	val bicValidation = 0.005;
-	val lastFile = 277;
+	val bicValidation = 0.025;
+	val lastFile = 139;
    
 	// Configuration
 	val folderLocation = "src/resources/rice-data30x";
@@ -88,6 +88,7 @@ object Process2 extends App with Context {
 				result = proc.!!;
 			} catch {
 				case e: RuntimeException => println("RuntimeException");
+				e.printStackTrace();
 				Thread.sleep(1000);
 				fileCounter = fileCounter - 1;
 			}
@@ -225,6 +226,10 @@ object Process2 extends App with Context {
 			trainingLabelsSet.add(labelUsed.toInt);
 		});
 	});
+	
+	println("Start time: " + startTime);
+	println("End time: " + Calendar.getInstance().getTime());
+	val endTime = Calendar.getInstance().getTime();
         
   
 	val updatedRDDMap = df.rdd.map{
@@ -284,6 +289,12 @@ object Process2 extends App with Context {
 	pw.write("\r\n");
 	pw.write("LN: ");
 	pw.write(labelsNegative.toString());
+	pw.write("\r\n");
+	pw.write("StartTime: ");
+	pw.write(startTime.toString());
+	pw.write("\r\n");
+	pw.write("EndTime: ");
+	pw.write(endTime.toString());
 	pw.close();
 
 	val pw1 = new PrintWriter(new File(trainingLabelsLocation2));

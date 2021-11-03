@@ -26,15 +26,15 @@ object Process2 extends App with Context {
 	// find a way to add max cols from driver 1 so minColsCounter can be set accordingly in driver2
 	import sparkSession.implicits._;
 	// Parameters
-	val theta = 0.025;
-	val minRows = 100;
+	val theta = 0.15;
+	val minRows = 10;
 	val maxRows = 100000;
 	val minCols = 1;
-	val bicValidation = 0.025;
-	val lastFile = 139;
+	val bicValidation = 0.05;
+	val lastFile = 43;
    
 	// Configuration
-	val folderLocation = "src/resources/rice-data30x";
+	val folderLocation = "src/resources/bank-data";
 	println(folderLocation);
 	// val inputFileLocation = "src/resources/" + folder + "/output/*.csv";
 	val inputFileLocation = folderLocation + "/output/*.csv";
@@ -42,7 +42,7 @@ object Process2 extends App with Context {
 	val trainingLabelsLocation = folderLocation + "/output/training-labels.txt";
 	val confusionMatrixLocation2 = output2FileLocation + "/confusion-matrix-trimax.txt";
 	val trainingLabelsLocation2 = output2FileLocation + "/training-labels-trimax.txt";
-	var minColsCounter = 7;
+	var minColsCounter = 4;
 
 	val startTime = Calendar.getInstance().getTime();
 	

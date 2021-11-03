@@ -16,19 +16,15 @@ import org.apache.spark.sql.types.StructType;
 //	val trange = getTRange(0.0, 7.0, 0.25, 0.05);
 object MainData {
   
-  var columnNames = Seq("rowId","label","0","1","2","3","4","5","6");
+  var columnNames = Seq("rowId","label","0","1","2","3");
   
+  // y = rowId
+  // x = 4 columns data-values + label column
+  // Return row = "rowId", 23 comma-separated values, label
   def mapToDF(x: String, y: Long): Row = {
     return Row(
-        y.toInt, 
-        x.split(",")(0).toDouble, 
-        x.split(",")(1).toDouble, 
-	      x.split(",")(2).toDouble, 
-	      x.split(",")(3).toDouble, 
-	      x.split(",")(4).toDouble, 
-	      x.split(",")(5).toDouble,
-	      x.split(",")(6).toDouble,
-	      x.split(",")(7).toInt
+        y.toInt, x.split(",")(0).toDouble, x.split(",")(1).toDouble, 
+	      x.split(",")(2).toDouble, x.split(",")(3).toDouble, x.split(",")(4).toInt
         )
   }
   
@@ -52,9 +48,6 @@ object MainData {
 	    StructField("1", DoubleType, true),
 	    StructField("2", DoubleType, true),
 	    StructField("3", DoubleType, true),
-	    StructField("4", DoubleType, true),
-	    StructField("5", DoubleType, true),
-	    StructField("6", DoubleType, true),
 	    StructField("label", IntegerType, true)
 	  )
   }
